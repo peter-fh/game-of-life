@@ -50,11 +50,12 @@ int main() {
 
 	glDisable(GL_DEPTH_TEST);
 	glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
-	glPointSize(1.0f);
+	glPointSize(2.0f);
 
-	double last_frame_time = 0.0;
 	const double target_fps = 30.0;
 	const double target_frame_time = 1.0 / target_fps;
+	double average_frame_time = 0.05;
+	const double alpha = 0.9;
 
 	while (!glfwWindowShouldClose(window)) {
 		double last_frame_time = glfwGetTime();
@@ -74,7 +75,8 @@ int main() {
 		glfwPollEvents();
 
 		double current_frame_time = glfwGetTime() - last_frame_time;
-		std::cout << " Frame time: " << std::round(current_frame_time * 1000) << "ms \r";
+		average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
+		std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms \r";
 		std::cout << std::flush;
 		double frame_time_remaining = target_frame_time - current_frame_time;
 		if (frame_time_remaining > 0) {
