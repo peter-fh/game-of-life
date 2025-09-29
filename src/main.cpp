@@ -4,33 +4,45 @@
 #include <thread>
 
 
-#define HEIGHT 786
-#define WIDTH 1024
-
 #define BACKGROUND_COLOR 0.0f, 0.0f, 0.0f, 0.0f
-#define OBJECT_COLOR 0.0f, 1.0f, 0.8f, 1.0f
 
 
-
-bool fill_mode = false;
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods){
-}
-
-
-bool first_mouse = true;
-double lastX;
-double lastY;
 void processInput(GLFWwindow* window) {
 	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 		glfwSetWindowShouldClose(window, true);
 	}
 }
 
-void mouse_callback(GLFWwindow*, double xpos, double ypos){
-}
-
 int main(int argc, char* argv[]) {
 
+	const int height = 784;
+	const int width = 1024;
+	const int cores = 4;
+	const double target_fps = 30;
+
+	std::cout << "\n";
+	std::cout << "|-------------------------------------|\n";
+	std::cout << "| ██████╗  █████╗  ███╗   ███╗███████╗|\n";
+	std::cout << "| ██╔════╝ ██╔══██╗████╗ ████║██╔════╝|\n";
+	std::cout << "| ██║  ███╗███████║██╔████╔██║█████╗  |\n";
+	std::cout << "| ██║   ██║██╔══██║██║╚██╔╝██║██╔══╝  |\n";
+	std::cout << "| ╚██████╔╝██║  ██║██║ ╚═╝ ██║███████╗|\n";
+	std::cout << "|                                     |\n";
+	std::cout << "|  ██████╗ ███████╗                   |\n";
+	std::cout << "| ██╔═══██╗██╔════╝                   |\n";
+	std::cout << "| ██║   ██║█████╗                     |\n";
+	std::cout << "| ██║   ██║██╔══╝                     |\n";
+	std::cout << "| ╚██████╔╝██║                        |\n";
+	std::cout << "|  ╚═════╝ ╚═╝                        |\n";
+	std::cout << "|                                     |\n";
+	std::cout << "| ██╗     ██╗███████╗███████╗         |\n";
+	std::cout << "| ██║     ██║██╔════╝██╔════╝         |\n";
+	std::cout << "| ██║     ██║█████╗  █████╗           |\n";
+	std::cout << "| ██║     ██║██╔══╝  ██╔══╝           |\n";
+	std::cout << "| ███████╗██║██║     ███████╗         |\n";
+	std::cout << "| ╚══════╝╚═╝╚═╝     ╚══════╝         |\n";
+	std::cout << "|-------------------------------------|\n";
+	std::cout << "\n";
 	int species = 5;
 	if (argc >= 2) {
 		int species_arg = atoi(argv[1]);
@@ -39,6 +51,10 @@ int main(int argc, char* argv[]) {
 			species = species_arg;
 		} else if (argc == 3) {
 			if (std::string(argv[2]) == "--force") {
+				if (species_arg > 22) {
+					std::cout << "Only 22 colors are supported, defaulting to 22\n";
+					species = 22;
+				}
 				std::cout << "Starting game of life with " << species_arg << " species\n";
 				species = species_arg;
 			} else {
@@ -50,20 +66,17 @@ int main(int argc, char* argv[]) {
 	} else {
 		std::cout << "Defaulting to 5 species since none were entered\n";
 	}
-	GLFWwindow* window = init_window(WIDTH, HEIGHT, "Game of Life");
+	GLFWwindow* window = init_window(width, height, "Game of Life");
 	Shader shader("vertex.glsl", "fragment.glsl");
-	Grid* grid = new Grid(WIDTH, HEIGHT, species);
+	Grid* grid = new Grid(width, height, species);
 	grid->populate();
-	GridRenderer renderer(grid, 4);
+	GridRenderer renderer(grid, cores);
 
 #ifdef __APPLE__
-	glViewport(0, 0, WIDTH * 2, HEIGHT * 2);
+	glViewport(0, 0, width * 2, height * 2);
 #else
 	glViewport(0, 0, WIDTH, HEIGHT);
 #endif
-
-	glfwSetCursorPosCallback(window, mouse_callback);  
-	glfwSetKeyCallback(window, key_callback);
 
 	glfwSwapInterval(1);
 
@@ -71,10 +84,9 @@ int main(int argc, char* argv[]) {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
 	glPointSize(2.0f);
 
-	const double target_fps = 30;
 	const double target_frame_time = 1.0 / target_fps;
-	double average_frame_time = 0.05;
-	const double alpha = 0.8;
+	double average_frame_time = 0;
+	const double alpha = 0.9;
 
 	while (!glfwWindowShouldClose(window)) {
 
@@ -94,6 +106,9 @@ int main(int argc, char* argv[]) {
 
 		glfwPollEvents();
 
+		if (average_frame_time == 0) {
+			average_frame_time = current_frame_time;
+		}
 		average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
 		int fps = average_frame_time < target_frame_time ? target_fps : (1.0 / average_frame_time);
 		std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
@@ -104,6 +119,7 @@ int main(int argc, char* argv[]) {
 		} 
 	}
 
+	std::cout << "\n";
 	glfwDestroyWindow(window);
 	glfwTerminate();
 	return 1;

@@ -54,6 +54,9 @@ int Grid::get_active_points() {
 void Grid::populate() {
 	srand(time(NULL));
 	int threshold = (10 - m_species) * 10;
+	if (threshold < 0) {
+		threshold = 0;
+	}
 
 	// https://stackoverflow.com/questions/13445688/how-to-generate-a-random-number-in-c
 	std::random_device dev;
@@ -70,6 +73,7 @@ void Grid::populate() {
 			}
 		}
 	}
+	std::cout << "Populated " << get_active_points() << " squares.\n";
 }
 
 GridRenderer::GridRenderer(Grid* grid, int cores) {
@@ -111,7 +115,6 @@ GridRenderer::GridRenderer(Grid* grid, int cores) {
 		{0, 0, 128, 255},
 		{128, 128, 128, 255},
 		{255, 255, 255, 255},
-		{0, 0, 0, 255},
 	};
 }
 
