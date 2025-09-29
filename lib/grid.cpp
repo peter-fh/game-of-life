@@ -73,7 +73,9 @@ void Grid::populate() {
 			}
 		}
 	}
-	std::cout << "Populated " << get_active_points() << " squares.\n";
+	int total_points = get_active_points();
+	double points_percentage = double(total_points) / double(m_height * m_width) * 100;
+	std::cout << "Populated " << get_active_points() << " squares (" << std::round(points_percentage) << "%)\n";
 }
 
 GridRenderer::GridRenderer(Grid* grid, int cores) {
