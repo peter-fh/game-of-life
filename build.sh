@@ -3,7 +3,11 @@
 mkdir -p build
 cd build
 cmake ..
-make
-cd ..
-./build/LearnGL
+if make; then
+	cd ..
+	./build/LearnGL $1
+else
+	cd ..
+fi
+
 

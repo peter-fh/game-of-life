@@ -3,14 +3,16 @@
 #include <vector>
 #include <random>
 #include <thread>
+#include <iostream>
 
-Grid::Grid(int width, int height) {
+Grid::Grid(int width, int height, int species) {
 	m_grid = std::vector<std::vector<int>>(
 		width,
 		std::vector<int>(height)
 	);
 	m_width = width;
 	m_height = height;
+	m_species = species;
 }
 
 int Grid::check(int x, int y) {
@@ -51,13 +53,14 @@ int Grid::get_active_points() {
 
 void Grid::populate() {
 	srand(time(NULL));
-	int threshold = 50;
+	int threshold = (10 - m_species) * 10;
+	std::cout << "Threshold: " << threshold << "\n";
 
 	// https://stackoverflow.com/questions/13445688/how-to-generate-a-random-number-in-c
 	std::random_device dev;
 	std::mt19937 rng(dev());
 	std::uniform_int_distribution<std::mt19937::result_type> distribution(1,100);
-	std::uniform_int_distribution<std::mt19937::result_type> color_distribution(1,22);
+	std::uniform_int_distribution<std::mt19937::result_type> color_distribution(1, m_species);
 
 	for (int x=0; x < m_width; x++) {
 		for (int y=0; y < m_height; y++) {
@@ -70,14 +73,13 @@ void Grid::populate() {
 	}
 }
 
-GridRenderer::GridRenderer(Grid* grid, int cores, int species) {
+GridRenderer::GridRenderer(Grid* grid, int cores) {
 	m_grid = grid;
-	m_next = new Grid(grid->m_width, grid->m_height);
-	GLuint VAO;
-	glGenVertexArrays(1, &VAO);
+	m_next = new Grid(grid->m_width, grid->m_height, grid->m_species);
+	glGenVertexArrays(1, &m_VAO);
 	glGenBuffers(1, &m_VBO);
 
-	glBindVertexArray(VAO);
+	glBindVertexArray(m_VAO);
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
 	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_DYNAMIC_DRAW);
 
@@ -116,92 +118,77 @@ GridRenderer::GridRenderer(Grid* grid, int cores, int species) {
 
 void GridRenderer::step() {
 	std::thread threads[m_cores];
-	m_vertices = {};
-	std::vector<std::vector<Vertex>> thread_vertices = std::vector<std::vector<Vertex>>(
-		m_cores,
-		std::vector<Vertex>()
-	);
+	size_t estimated_capacity = m_vertices.size() * 1.1;
+	m_vertices.clear();
+	m_vertices.reserve(estimated_capacity);
+	std::vector<std::vector<Vertex>> thread_vertices(m_cores);
+
+	for (auto& vec : thread_vertices) {
+		vec.reserve(estimated_capacity / m_cores);
+	}
+
 	for (int i=0; i < m_cores; i++) {
 		threads[i] = std::thread(&GridRenderer::thread_step, this, std::ref(thread_vertices[i]), i);
 	}
+
 	for (int i=0; i < m_cores; i++) {
 		threads[i].join();
 		m_vertices.insert(m_vertices.end(), thread_vertices[i].begin(), thread_vertices[i].end());
 	}
+
 	swap();
 	render();
 }
 
-int checkNeighbors(Grid* grid, int x, int y){ 
-	int neighbors = 0;
-	if (grid->check(x-1, y-1) != 0) {
-		neighbors++;
-	}
-	if (grid->check(x-1, y) != 0) {
-		neighbors++;
-	}
-	if (grid->check(x-1, y+1) != 0) {
-		neighbors++;
-	}
-	if (grid->check(x, y-1) != 0) {
-		neighbors++;
-	}
-	if (grid->check(x, y+1) != 0) {
-		neighbors++;
-	}
-	if (grid->check(x+1, y-1) != 0) {
-		neighbors++;
-	}
-	if (grid->check(x+1, y) != 0) {
-		neighbors++;
-	}
-	if (grid->check(x+1, y+1) != 0) {
-		neighbors++;
-	}
-	return neighbors;
-}
-
-const std::vector<std::pair<int, int>> directions = {
-	std::make_pair(-1, -1),
-	std::make_pair(-1, 0),
-	std::make_pair(-1, 1),
-	std::make_pair(0, -1),
-	std::make_pair(0, 1),
-	std::make_pair(1, -1),
-	std::make_pair(1, 0),
-	std::make_pair(1, 1),
-};
+constexpr std::array<std::pair<int, int>, 8> directions = {{
+    {-1, -1}, {-1, 0}, {-1, 1},
+    { 0, -1},          { 0, 1},
+    { 1, -1}, { 1, 0}, { 1, 1}
+}};
 
 int nextValue(Grid* grid, int x, int y) {
-	int value = 0;
-
-
-	int neighbors = 0;
-	int neighbor_values[8];
-	for (const std::pair<int, int>& point : directions) {
-		value = grid->check(x + point.first, y + point.second);
-		if (value) {
-			neighbor_values[neighbors] = value;
-			neighbors++;
-		}
-	}
-
-	value = grid->check(x, y);
+	int value = grid->check(x, y);
 	if (value) {
+		int neighbors = 0;
+		for (const std::pair<int, int>& point : directions) {
+			int new_value = grid->check(x + point.first, y + point.second);
+			if (new_value && new_value == value) {
+				neighbors++;
+			}
+		}
+
 		if (neighbors == 2 || neighbors == 3) {
 			return value;
 		}
 		return 0;
 	}
 
-	if (neighbors != 3) {
+	int neighbors = 0;
+	static thread_local int neighbor_values[23];
+	std::fill_n(neighbor_values, grid->m_species + 1, 0);
+
+	for (const std::pair<int, int>& point : directions) {
+		int new_value = grid->check(x + point.first, y + point.second);
+		if (new_value) {
+			neighbor_values[new_value]++;
+			neighbors++;
+		}
+	}
+
+	if (neighbors < 3) {
 		return 0;
 	}
 
-	if (neighbor_values[0] == neighbor_values[1] || neighbor_values[0] == neighbor_values[2]) {
-		return neighbor_values[0];
+
+	for (int i=1; i < grid->m_species+1; i++) {
+		if (neighbor_values[i] == 3) {
+			return i;
+		}
 	}
-	return neighbor_values[1];
+
+
+	return 0;
+
 }
 
 

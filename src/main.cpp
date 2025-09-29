@@ -29,13 +29,25 @@ void processInput(GLFWwindow* window) {
 void mouse_callback(GLFWwindow*, double xpos, double ypos){
 }
 
-int main() {
+int main(int argc, char* argv[]) {
 
+	int species = 5;
+	if (argc == 2) {
+		int species_arg = atoi(argv[1]);
+		if (species_arg >= 5 && species_arg <= 10) {
+			std::cout << "Starting game of life with " << species_arg << " species\n";
+			species = species_arg;
+		} else {
+			std::cout << "Invalid argument was given, defaulting to 5\n";
+		}
+	} else {
+		std::cout << "Defaulting to 5 species since none were entered\n";
+	}
 	GLFWwindow* window = init_window(WIDTH, HEIGHT, "MUG TIME");
 	Shader shader("vertex.glsl", "fragment.glsl");
-	Grid* grid = new Grid(WIDTH, HEIGHT);
+	Grid* grid = new Grid(WIDTH, HEIGHT, species);
 	grid->populate();
-	GridRenderer renderer(grid, 4, 5);
+	GridRenderer renderer(grid, 4);
 
 #ifdef __APPLE__
 	glViewport(0, 0, WIDTH * 2, HEIGHT * 2);
@@ -55,10 +67,9 @@ int main() {
 	const double target_fps = 30.0;
 	const double target_frame_time = 1.0 / target_fps;
 	double average_frame_time = 0.05;
-	const double alpha = 0.9;
+	const double alpha = 0;
 
 	while (!glfwWindowShouldClose(window)) {
-		double last_frame_time = glfwGetTime();
 
 		processInput(window);
 
@@ -67,14 +78,15 @@ int main() {
 
 		shader.use();
 
+		double last_frame_time = glfwGetTime();
 		renderer.step();
+		double current_frame_time = glfwGetTime() - last_frame_time;
 
 
 		glfwSwapBuffers(window);
 
 		glfwPollEvents();
 
-		double current_frame_time = glfwGetTime() - last_frame_time;
 		average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
 		std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms \r";
 		std::cout << std::flush;
