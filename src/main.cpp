@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
 	} else {
 		std::cout << "Defaulting to 5 species since none were entered\n";
 	}
-	GLFWwindow* window = init_window(WIDTH, HEIGHT, "MUG TIME");
+	GLFWwindow* window = init_window(WIDTH, HEIGHT, "Game of Life");
 	Shader shader("vertex.glsl", "fragment.glsl");
 	Grid* grid = new Grid(WIDTH, HEIGHT, species);
 	grid->populate();
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
 	const double target_fps = 30;
 	const double target_frame_time = 1.0 / target_fps;
 	double average_frame_time = 0.05;
-	const double alpha = 0;
+	const double alpha = 0.8;
 
 	while (!glfwWindowShouldClose(window)) {
 
