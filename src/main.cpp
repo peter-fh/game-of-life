@@ -32,11 +32,18 @@ void mouse_callback(GLFWwindow*, double xpos, double ypos){
 int main(int argc, char* argv[]) {
 
 	int species = 5;
-	if (argc == 2) {
+	if (argc >= 2) {
 		int species_arg = atoi(argv[1]);
 		if (species_arg >= 5 && species_arg <= 10) {
 			std::cout << "Starting game of life with " << species_arg << " species\n";
 			species = species_arg;
+		} else if (argc == 3) {
+			if (std::string(argv[2]) == "--force") {
+				std::cout << "Starting game of life with " << species_arg << " species\n";
+				species = species_arg;
+			} else {
+				std::cout << argv[2] << "\n";
+			}
 		} else {
 			std::cout << "Invalid argument was given, defaulting to 5\n";
 		}
@@ -64,7 +71,7 @@ int main(int argc, char* argv[]) {
 	glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
 	glPointSize(2.0f);
 
-	const double target_fps = 30.0;
+	const double target_fps = 30;
 	const double target_frame_time = 1.0 / target_fps;
 	double average_frame_time = 0.05;
 	const double alpha = 0;
@@ -88,7 +95,8 @@ int main(int argc, char* argv[]) {
 		glfwPollEvents();
 
 		average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
-		std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms \r";
+		int fps = average_frame_time < target_frame_time ? target_fps : (1.0 / average_frame_time);
+		std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
 		std::cout << std::flush;
 		double frame_time_remaining = target_frame_time - current_frame_time;
 		if (frame_time_remaining > 0) {

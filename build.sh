@@ -5,9 +5,8 @@ cd build
 cmake ..
 if make; then
 	cd ..
-	./build/LearnGL $1
+	./build/LearnGL $@
 else
 	cd ..
 fi
-
 

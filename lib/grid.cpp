@@ -54,7 +54,6 @@ int Grid::get_active_points() {
 void Grid::populate() {
 	srand(time(NULL));
 	int threshold = (10 - m_species) * 10;
-	std::cout << "Threshold: " << threshold << "\n";
 
 	// https://stackoverflow.com/questions/13445688/how-to-generate-a-random-number-in-c
 	std::random_device dev;
