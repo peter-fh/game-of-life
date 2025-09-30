@@ -25,9 +25,10 @@ int parse_species_arguments(int argc, char* argv[]) {
 				if (species_arg > 22) {
 					std::cout << "Only 22 colors are supported, defaulting to 22\n";
 					species = 22;
+				} else {
+					std::cout << "Starting game of life with " << species_arg << " species\n";
+					species = species_arg;
 				}
-				std::cout << "Starting game of life with " << species_arg << " species\n";
-				species = species_arg;
 			} else {
 				std::cout << argv[2] << "\n";
 			}
@@ -54,6 +55,7 @@ int main(int argc, char* argv[]) {
 	std::cout << "| ██║  ███╗███████║██╔████╔██║█████╗  |\n";
 	std::cout << "| ██║   ██║██╔══██║██║╚██╔╝██║██╔══╝  |\n";
 	std::cout << "| ╚██████╔╝██║  ██║██║ ╚═╝ ██║███████╗|\n";
+	std::cout << "|  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝|\n";
 	std::cout << "|                                     |\n";
 	std::cout << "|  ██████╗ ███████╗                   |\n";
 	std::cout << "| ██╔═══██╗██╔════╝                   |\n";
