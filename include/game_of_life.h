@@ -2,10 +2,28 @@
 #include "GL/glew.h"
 #include "GLFW/glfw3.h"
 #include "grid.h"
+#include "oneapi/tbb.h"
 
 struct Vertex {
     GLfloat position[2];
     GLubyte color[4];
+};
+
+using namespace oneapi;
+class Stepper {
+public:
+
+	Stepper(Grid* grid, Grid* next, tbb::concurrent_vector<Vertex>& vertices):
+		m_grid(grid),
+		m_next(next),
+		m_vertices(vertices)
+	{}
+
+	void operator()  (const tbb::blocked_range2d<int, int>& r) const;
+private:
+	Grid* m_grid;
+	Grid* m_next;
+	tbb::concurrent_vector<Vertex>& m_vertices;
 };
 
 class GameOfLife {
@@ -21,6 +39,6 @@ private:
     Grid* m_next;
     GLuint m_VBO;
     GLuint m_VAO;
-    std::vector<std::array<GLubyte, 4>> m_colors;
-    std::vector<Vertex> m_vertices;
+    oneapi::tbb::concurrent_vector<Vertex> m_vertices;
 };
+

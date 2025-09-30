@@ -2,6 +2,7 @@
 #include "shader.h"
 #include "game_of_life.h"
 #include <thread>
+#include <oneapi/tbb.h>
 
 
 #define BACKGROUND_COLOR 0.0f, 0.0f, 0.0f, 0.0f

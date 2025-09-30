@@ -1,7 +1,33 @@
 #include "game_of_life.h"
+#include "oneapi/tbb.h"
 #include <thread>
 #include <vector>
+#include <iostream>
 
+const std::vector<std::array<GLubyte, 4>> COLORS = {
+	{0, 0, 0, 255},
+	{230, 25, 75, 255},
+	{60, 180, 75, 255},
+	{255, 225, 25, 255},
+	{0, 130, 200, 255},
+	{245, 130, 48, 255},
+	{145, 30, 180, 255},
+	{70, 240, 240, 255},
+	{240, 50, 230, 255},
+	{210, 245, 60, 255},
+	{250, 190, 212, 255},
+	{0, 128, 128, 255},
+	{220, 190, 255, 255},
+	{170, 110, 40, 255},
+	{255, 250, 200, 255},
+	{128, 0, 0, 255},
+	{170, 255, 195, 255},
+	{128, 128, 0, 255},
+	{255, 215, 180, 255},
+	{0, 0, 128, 255},
+	{128, 128, 128, 255},
+	{255, 255, 255, 255},
+};
 
 GameOfLife::GameOfLife(Grid* grid, int cores) {
 	m_grid = grid;
@@ -11,7 +37,7 @@ GameOfLife::GameOfLife(Grid* grid, int cores) {
 
 	glBindVertexArray(m_VAO);
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), &m_vertices[0], GL_DYNAMIC_DRAW);
 
 	GLsizei stride = sizeof(Vertex);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)0);
@@ -19,54 +45,6 @@ GameOfLife::GameOfLife(Grid* grid, int cores) {
 	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(Vertex, color));
 	glEnableVertexAttribArray(1);
 	m_cores = cores;
-	m_colors = {
-		{0, 0, 0, 255},
-		{230, 25, 75, 255},
-		{60, 180, 75, 255},
-		{255, 225, 25, 255},
-		{0, 130, 200, 255},
-		{245, 130, 48, 255},
-		{145, 30, 180, 255},
-		{70, 240, 240, 255},
-		{240, 50, 230, 255},
-		{210, 245, 60, 255},
-		{250, 190, 212, 255},
-		{0, 128, 128, 255},
-		{220, 190, 255, 255},
-		{170, 110, 40, 255},
-		{255, 250, 200, 255},
-		{128, 0, 0, 255},
-		{170, 255, 195, 255},
-		{128, 128, 0, 255},
-		{255, 215, 180, 255},
-		{0, 0, 128, 255},
-		{128, 128, 128, 255},
-		{255, 255, 255, 255},
-	};
-}
-
-void GameOfLife::step() {
-	std::thread threads[m_cores];
-	size_t estimated_capacity = m_vertices.size() * 1.1;
-	m_vertices.clear();
-	m_vertices.reserve(estimated_capacity);
-	std::vector<std::vector<Vertex>> thread_vertices(m_cores);
-
-	for (auto& vec : thread_vertices) {
-		vec.reserve(estimated_capacity / m_cores);
-	}
-
-	for (int i=0; i < m_cores; i++) {
-		threads[i] = std::thread(&GameOfLife::thread_step, this, std::ref(thread_vertices[i]), i);
-	}
-
-	for (int i=0; i < m_cores; i++) {
-		threads[i].join();
-		m_vertices.insert(m_vertices.end(), thread_vertices[i].begin(), thread_vertices[i].end());
-	}
-
-	swap();
-	render();
 }
 
 constexpr std::array<std::pair<int, int>, 8> directions = {{
@@ -119,6 +97,79 @@ int nextValue(Grid* grid, int x, int y) {
 	return 0;
 
 }
+using namespace oneapi;
+class Stepper {
+public:
+
+	Stepper(Grid* grid, Grid* next, tbb::concurrent_vector<Vertex>& vertices):
+		m_grid(grid),
+		m_next(next),
+		m_vertices(vertices)
+	{}
+
+	void operator()  (const tbb::blocked_range2d<int, int>& r) const {
+		Grid* grid = m_grid;
+		Grid* next = m_next;
+		float x_midpoint = (float)grid->m_width / 2.0;
+		float y_midpoint = (float)grid->m_height / 2.0;
+		for (int x = r.cols().begin(); x < r.cols().end(); x++) {
+			for (int y = r.rows().begin(); y < r.rows().end(); y++) {
+				int value = nextValue(grid, x, y);
+				if (value) {
+					Vertex vertex;
+					vertex.position[0] = float(x - x_midpoint) / x_midpoint;
+					vertex.position[1] = float(y - y_midpoint) / y_midpoint;
+
+					for (int i=0; i < 4; i++) {
+						vertex.color[i] = COLORS[value][i];
+					}
+					m_vertices.push_back(vertex);
+
+					grid->set(x, y, value);
+				}
+
+			}
+		}
+
+	}
+private:
+	Grid* m_grid;
+	Grid* m_next;
+	tbb::concurrent_vector<Vertex>& m_vertices;
+};
+
+void GameOfLife::step() {
+	std::thread threads[m_cores];
+	size_t estimated_capacity = m_vertices.size() * 1.1;
+	Stepper stepper(m_grid, m_next, estimated_capacity);
+	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_width, 0, m_grid->m_height), stepper);
+	std::cout << stepper.m_vertices.size() << " Vertices from stepper class\n";
+	m_vertices.assign(stepper.m_vertices.begin(), stepper.m_vertices.end());
+	std::cout << m_vertices.size() << " Vertices\n";
+	/*
+	m_vertices.clear();
+	m_vertices.reserve(estimated_capacity);
+	std::vector<std::vector<Vertex>> thread_vertices(m_cores);
+
+	for (auto& vec : thread_vertices) {
+		vec.reserve(estimated_capacity / m_cores);
+	}
+
+	for (int i=0; i < m_cores; i++) {
+		threads[i] = std::thread(&GameOfLife::thread_step, this, std::ref(thread_vertices[i]), i);
+	}
+
+	for (int i=0; i < m_cores; i++) {
+		threads[i].join();
+		m_vertices.insert(m_vertices.end(), thread_vertices[i].begin(), thread_vertices[i].end());
+	}
+	*/
+
+	swap();
+	render();
+}
+
+
 
 
 void GameOfLife::thread_step(std::vector<Vertex>& vertices, int thread) {
@@ -136,7 +187,7 @@ void GameOfLife::thread_step(std::vector<Vertex>& vertices, int thread) {
 				vertex.position[1] = float(y - y_midpoint) / y_midpoint;
 
 				for (int i=0; i < 4; i++) {
-					vertex.color[i] = m_colors[value][i];
+					vertex.color[i] = COLORS[value][i];
 				}
 				vertices.push_back(vertex);
 
@@ -156,7 +207,7 @@ void GameOfLife::swap() {
 
 void GameOfLife::render() {
 	glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_DYNAMIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), &m_vertices[0], GL_DYNAMIC_DRAW);
 	glDrawArrays(GL_POINTS, 0, m_vertices.size());
 }
 

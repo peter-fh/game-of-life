@@ -5,7 +5,7 @@ cd build
 cmake ..
 if make; then
 	cd ..
-	./build/LearnGL $@
+	./build/Game\ Of\ Life $@
 else
 	cd ..
 fi
