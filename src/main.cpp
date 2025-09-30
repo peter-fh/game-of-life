@@ -1,6 +1,6 @@
 #include "window.h"
 #include "shader.h"
-#include "grid.h"
+#include "game_of_life.h"
 #include <thread>
 
 
@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
 	Shader shader("vertex.glsl", "fragment.glsl");
 	Grid* grid = new Grid(width, height, species);
 	grid->populate();
-	GridRenderer renderer(grid, cores);
+	GameOfLife game(grid, cores);
 
 #ifdef __APPLE__
 	glViewport(0, 0, width * 2, height * 2);
@@ -107,7 +107,7 @@ int main(int argc, char* argv[]) {
 		shader.use();
 
 		double last_frame_time = glfwGetTime();
-		renderer.step();
+		game.step();
 		double current_frame_time = glfwGetTime() - last_frame_time;
 
 
