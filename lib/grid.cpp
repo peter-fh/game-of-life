@@ -49,7 +49,7 @@ int Grid::get_active_points() {
 	return points;
 }
 
-void Grid::populate() {
+void Grid::populate(bool profile) {
 	srand(time(NULL));
 	int threshold = (10 - m_species) * 10;
 	if (threshold < 0) {
@@ -58,9 +58,16 @@ void Grid::populate() {
 
 	// https://stackoverflow.com/questions/13445688/how-to-generate-a-random-number-in-c
 	std::random_device dev;
-	std::mt19937 rng(0);
+	std::mt19937 random_rng(dev());
+	std::mt19937 profile_rng(0);
 	std::uniform_int_distribution<std::mt19937::result_type> distribution(1,100);
 	std::uniform_int_distribution<std::mt19937::result_type> color_distribution(1, m_species);
+	std::mt19937 rng;
+	if (profile) {
+		rng = profile_rng;
+	} else {
+		rng = random_rng;
+	}
 
 	for (int x=0; x < m_width; x++) {
 		for (int y=0; y < m_height; y++) {

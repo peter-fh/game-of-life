@@ -8,7 +8,7 @@ public:
     int check(int x, int y);
     bool set(int x, int y, int value);
     void clear();
-    void populate();
+    void populate(bool profile);
     int get_active_points();
     int m_width;
     int m_height;

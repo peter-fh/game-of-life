@@ -13,32 +13,28 @@ void processInput(GLFWwindow* window) {
 	}
 }
 
-int parse_species_arguments(int argc, char* argv[]) {
+int parse_species_arguments(char* arg, bool force) {
 	int species = 5;
-	if (argc >= 2) {
-		int species_arg = atoi(argv[1]);
-		if (species_arg >= 5 && species_arg <= 10) {
-			std::cout << "Starting game of life with " << species_arg << " species\n";
-			species = species_arg;
-		} else if (argc == 3) {
-			if (std::string(argv[2]) == "--force") {
-				if (species_arg > 22) {
-					std::cout << "Only 22 colors are supported, defaulting to 22\n";
-					species = 22;
-				} else {
-					std::cout << "Starting game of life with " << species_arg << " species\n";
-					species = species_arg;
-				}
-			} else {
-				std::cout << argv[2] << "\n";
-			}
-		} else {
-			std::cout << "Invalid argument was given, defaulting to 5\n";
-		}
-	} else {
-		std::cout << "Defaulting to 5 species since none were entered\n";
+
+	int species_arg = atoi(arg);
+	if (force) {
+		if (species_arg > 22 || species_arg < 0) {
+			std::cout << "Only 22 colors are supported, defaulting to 22\n";
+			return 22;
+		} 
+
+		std::cout << "Starting game of life with " << species_arg << " species\n";
+		return species_arg;
 	}
-	return species;
+
+	if (species_arg >= 5 && species_arg <= 10) {
+		std::cout << "Starting game of life with " << species_arg << " species\n";
+		return species_arg;
+	} 
+
+	std::cout << "Invalid argument was given, defaulting to 5\n";
+
+	return 5;
 }
 
 int main(int argc, char* argv[]) {
@@ -73,12 +69,31 @@ int main(int argc, char* argv[]) {
 	std::cout << "|-------------------------------------|\n";
 	std::cout << "\n";
 
+	bool force = false;
+	bool profile = false;
+	int species = 0;
+	if (argc > 2) {
+		for (int i=1; i < argc; i++) {
+			std::string arg(argv[i]);
+			if (arg == "--profile" || arg == "-p") {
+				profile = true;
+			}
+			if (arg == "--force" || arg == "-f") {
+				force = true;
+			}
+		}
+	} 
+	if (argc < 2) {
+		std::cout << "No species number was given, defaulting to 5\n";
+		species = 5;
+	} else {
+		species = parse_species_arguments(argv[1], force);
+	}
 
-	int species = parse_species_arguments(argc, argv);
 	GLFWwindow* window = init_window(width, height, "Game of Life");
 	Shader shader("vertex.glsl", "fragment.glsl");
 	Grid* grid = new Grid(width, height, species);
-	grid->populate();
+	grid->populate(profile);
 	GameOfLife game(grid, cores);
 
 #ifdef __APPLE__
@@ -120,8 +135,6 @@ int main(int argc, char* argv[]) {
 		if (average_frame_time == 0) {
 			average_frame_time = current_frame_time;
 		}
-		total_frame_time += current_frame_time;
-		frames_passed++;
 		average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
 		int fps = average_frame_time < target_frame_time ? target_fps : (1.0 / average_frame_time);
 		std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
@@ -131,8 +144,12 @@ int main(int argc, char* argv[]) {
 			std::this_thread::sleep_for(std::chrono::duration<double>(frame_time_remaining));
 		}
 
-		if (frames_passed == 450) {
-			std::cout << "Took " << std::round(total_frame_time * 1000) << "ms for the first 450 frames\n";
+		if (profile) {
+			total_frame_time += current_frame_time;
+			frames_passed++;
+			if (frames_passed == 450) {
+				std::cout << "Took " << std::round(total_frame_time * 1000) << "ms for the first 450 frames\n";
+			}
 		}
 	}
 
