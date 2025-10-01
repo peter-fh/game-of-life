@@ -97,9 +97,12 @@ int main(int argc, char* argv[]) {
 	const double target_frame_time = 1.0 / target_fps;
 	double average_frame_time = 0;
 	const double alpha = 0.9;
+	int frames_passed = 0;
+	double total_frame_time = 0;
 
 	while (!glfwWindowShouldClose(window)) {
 
+		double last_frame_time = glfwGetTime();
 		processInput(window);
 
 		glClearColor(BACKGROUND_COLOR);
@@ -107,18 +110,19 @@ int main(int argc, char* argv[]) {
 
 		shader.use();
 
-		double last_frame_time = glfwGetTime();
 		game.step();
-		double current_frame_time = glfwGetTime() - last_frame_time;
 
 
 		glfwSwapBuffers(window);
 
 		glfwPollEvents();
+		double current_frame_time = glfwGetTime() - last_frame_time;
 
 		if (average_frame_time == 0) {
 			average_frame_time = current_frame_time;
 		}
+		total_frame_time += current_frame_time;
+		frames_passed++;
 		average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
 		int fps = average_frame_time < target_frame_time ? target_fps : (1.0 / average_frame_time);
 		std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
@@ -126,7 +130,11 @@ int main(int argc, char* argv[]) {
 		double frame_time_remaining = target_frame_time - current_frame_time;
 		if (frame_time_remaining > 0) {
 			std::this_thread::sleep_for(std::chrono::duration<double>(frame_time_remaining));
-		} 
+		}
+
+		if (frames_passed == 450) {
+			std::cout << "Took " << std::round(total_frame_time * 1000) << "ms for the first 450 frames\n";
+		}
 	}
 
 	std::cout << "\n";

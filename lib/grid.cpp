@@ -58,7 +58,7 @@ void Grid::populate() {
 
 	// https://stackoverflow.com/questions/13445688/how-to-generate-a-random-number-in-c
 	std::random_device dev;
-	std::mt19937 rng(dev());
+	std::mt19937 rng(0);
 	std::uniform_int_distribution<std::mt19937::result_type> distribution(1,100);
 	std::uniform_int_distribution<std::mt19937::result_type> color_distribution(1, m_species);
 
