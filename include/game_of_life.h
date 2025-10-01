@@ -23,4 +23,5 @@ private:
     GLuint m_VAO;
     std::vector<std::array<GLubyte, 4>> m_colors;
     std::vector<Vertex> m_vertices;
+    std::vector<std::vector<Vertex>> m_thread_vertices;
 };

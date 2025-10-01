@@ -43,6 +43,8 @@ GameOfLife::GameOfLife(Grid* grid, int cores) {
 		{128, 128, 128, 255},
 		{255, 255, 255, 255},
 	};
+	m_thread_vertices = std::vector<std::vector<Vertex>>(m_cores);
+
 }
 
 void GameOfLife::step() {
@@ -50,19 +52,19 @@ void GameOfLife::step() {
 	size_t estimated_capacity = m_vertices.size() * 1.1;
 	m_vertices.clear();
 	m_vertices.reserve(estimated_capacity);
-	std::vector<std::vector<Vertex>> thread_vertices(m_cores);
 
-	for (auto& vec : thread_vertices) {
+	for (auto& vec : m_thread_vertices) {
+		vec.clear();
 		vec.reserve(estimated_capacity / m_cores);
 	}
 
 	for (int i=0; i < m_cores; i++) {
-		threads[i] = std::thread(&GameOfLife::thread_step, this, std::ref(thread_vertices[i]), i);
+		threads[i] = std::thread(&GameOfLife::thread_step, this, std::ref(m_thread_vertices[i]), i);
 	}
 
 	for (int i=0; i < m_cores; i++) {
 		threads[i].join();
-		m_vertices.insert(m_vertices.end(), thread_vertices[i].begin(), thread_vertices[i].end());
+		m_vertices.insert(m_vertices.end(), m_thread_vertices[i].begin(), m_thread_vertices[i].end());
 	}
 
 	swap();
