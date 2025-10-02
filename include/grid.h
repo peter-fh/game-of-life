@@ -5,8 +5,8 @@
 class Grid {
 public:
     Grid(int width, int height, int species);
-    int check(int x, int y);
-    bool set(int x, int y, int value);
+    bool check(int x, int y, int species);
+    bool set(int x, int y, int species);
     void clear();
     void populate();
     int get_active_points();
@@ -14,6 +14,6 @@ public:
     int m_height;
     int m_species;
 private:
-    std::vector<std::vector<int>> m_grid;
+    std::vector<std::vector<std::vector<bool>>> m_grid;
 };
 

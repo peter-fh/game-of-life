@@ -23,5 +23,8 @@ private:
     GLuint m_VAO;
     oneapi::tbb::concurrent_vector<Vertex> m_vertices;
     std::vector<Vertex> m_rendered_vertices;
+
+    std::atomic<double> m_step_time;
+    std::atomic<double> m_vertex_time;
 };
 

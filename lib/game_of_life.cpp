@@ -4,6 +4,7 @@
 #include "oneapi/tbb/parallel_for.h"
 #include <vector>
 #include <random>
+#include <iostream>
 
 const std::vector<std::array<GLubyte, 4>> COLORS = {
 	{0, 0, 0, 255},
@@ -54,6 +55,27 @@ constexpr std::array<std::pair<int, int>, 8> directions = {{
     { 1, -1}, { 1, 0}, { 1, 1}
 }};
 
+bool nextValue(Grid* grid, int x, int y, int species) {
+	bool alive = grid->check(x, y, species);
+	int neighbors = 0;
+	for (const std::pair<int, int>& point : directions) {
+		bool alive = grid->check(x + point.first, y + point.second, species);
+		if (alive) {
+			neighbors++;
+		}
+	}
+
+	if (alive && (neighbors == 2 || neighbors == 3)) {
+		return true;
+	}
+	if (!alive && neighbors == 3) {
+		return true;
+	}
+
+	return false;
+}
+
+/*
 int nextValue(Grid* grid, int x, int y) {
 	int value = grid->check(x, y);
 	if (value) {
@@ -110,42 +132,73 @@ int nextValue(Grid* grid, int x, int y) {
 	std::uniform_int_distribution<int> dist(0, total_waking_species - 1);
 	return waking_species[dist(rng)];
 }
+*/
+
 
 using namespace oneapi;
 
 void GameOfLife::step() {
-	double step_start_time = glfwGetTime();
+	m_step_time = 0;
+	m_vertex_time = 0;
 	size_t estimated_capacity = m_vertices.size() * 1.1;
-	m_vertices.clear();
-	m_vertices.reserve(estimated_capacity);
-	double lambda_start_time = glfwGetTime();
+	double step_start = glfwGetTime();
+	//std::cout << "Stepping\n";
 	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
 		   [this](const tbb::blocked_range2d<int, int>& r) {
 			Grid* grid = m_grid;
 			Grid* next = m_next;
-			float x_midpoint = (float)grid->m_width / 2.0;
-			float y_midpoint = (float)grid->m_height / 2.0;
 			for (int x = r.cols().begin(); x < r.cols().end(); x++) {
 				for (int y = r.rows().begin(); y < r.rows().end(); y++) {
-					int value = nextValue(grid, x, y);
-					if (value) {
-						Vertex vertex;
-						vertex.position[0] = float(x - x_midpoint) / x_midpoint;
-						vertex.position[1] = float(y - y_midpoint) / y_midpoint;
-
-						for (int i=0; i < 4; i++) {
-							vertex.color[i] = COLORS[value][i];
+					for (int species=0; species < grid->m_species; species++) {
+						int value = nextValue(grid, x, y, species);
+						if (value) {
+							next->set(x, y, species);
 						}
-						m_vertices.push_back(vertex);
-
-						next->set(x, y, value);
 					}
 
 				}
 			   }
 		}
 	);
+		
+	double step_time = glfwGetTime() - step_start;
+	//std::cout << "Stepped\n";
 	swap();
+	m_vertices.clear();
+	m_vertices.reserve(estimated_capacity);
+	double vertex_start = glfwGetTime();
+	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
+		   [this](const tbb::blocked_range2d<int, int>& r) {
+			Grid* grid = m_grid;
+			float x_midpoint = (float)grid->m_width / 2.0;
+			float y_midpoint = (float)grid->m_height / 2.0;
+			for (int x = r.cols().begin(); x < r.cols().end(); x++) {
+				for (int y = r.rows().begin(); y < r.rows().end(); y++) {
+					for (int species=0; species < grid->m_species; species++) {
+						bool alive = grid->check(x, y, species);
+						if (alive) {
+							Vertex vertex;
+							vertex.position[0] = float(x - x_midpoint) / x_midpoint;
+							vertex.position[1] = float(y - y_midpoint) / y_midpoint;
+
+							for (int i=0; i < 4; i++) {
+								vertex.color[i] = COLORS[species][i];
+							}
+							m_vertices.push_back(vertex);
+							species = grid->m_species;
+
+						}
+					}
+
+				}
+			   }
+		}
+	);
+
+	double vertex_time = glfwGetTime() - vertex_start;
+	std::cout << "Step time: " << step_time * 1000 << "ms\n";
+	std::cout << "Vertex time: " << vertex_time * 1000 << "ms\n";
+	std::cout << "\n";
 	render();
 }
 
