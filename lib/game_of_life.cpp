@@ -143,15 +143,16 @@ void GameOfLife::step() {
 	size_t estimated_capacity = m_vertices.size() * 1.1;
 	double step_start = glfwGetTime();
 	//std::cout << "Stepping\n";
+	std::cout << "Parallel foring 0\n";
 	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
 		   [this](const tbb::blocked_range2d<int, int>& r) {
 			Grid* grid = m_grid;
 			Grid* next = m_next;
-			for (int x = r.cols().begin(); x < r.cols().end(); x++) {
-				for (int y = r.rows().begin(); y < r.rows().end(); y++) {
+			for (int y = r.rows().begin(); y < r.rows().end(); y++) {
+				for (int x = r.cols().begin(); x < r.cols().end(); x++) {
 					for (int species=0; species < grid->m_species; species++) {
-						int value = nextValue(grid, x, y, species);
-						if (value) {
+						int n = grid->check(x-1, y-1, species) + grid->check(x-1, y, species) + grid->check(x-1, y+1, species) + grid->check(x, y-1, species) + grid->check(x, y+1, species) + grid->check(x+1, y-1, species) + grid->check(x+1, y, species) + grid->check(x+1, y+1, species) ;
+						if (n==3 || (n==2 && grid->check(x,y,species))) {
 							next->set(x, y, species);
 						}
 					}
@@ -167,6 +168,7 @@ void GameOfLife::step() {
 	m_vertices.clear();
 	m_vertices.reserve(estimated_capacity);
 	double vertex_start = glfwGetTime();
+	std::cout << "Parallel foring 1\n";
 	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
 		   [this](const tbb::blocked_range2d<int, int>& r) {
 			Grid* grid = m_grid;

@@ -5,10 +5,10 @@
 
 Grid::Grid(int width, int height, int species) {
 	m_grid = std::vector<std::vector<std::vector<bool>>>(
-		species,
+		width+2,
 		std::vector<std::vector<bool>>(
-			width,
-			std::vector<bool>(height)
+			height+2,
+			std::vector<bool>(species)
 		)
 	);
 	m_width = width;
@@ -16,25 +16,10 @@ Grid::Grid(int width, int height, int species) {
 	m_species = species;
 }
 
-bool Grid::check(int x, int y, int species) {
-	if (x < 0 || x >= m_width || y < 0 || y >= m_height) {
-		return false;
-	}
-
-	return m_grid[species][x][y];
-}
-
-bool Grid::set(int x, int y, int species) {
-	if (x < 0 || x >= m_width || y < 0 || y >= m_height) {
-		return false;
-	}
-	m_grid[species][x][y] = true;
-	return true;
-}
 
 void Grid::clear() {
-	for(auto& species : m_grid){
-		for(auto& elem: species) {
+	for(auto& columns : m_grid){
+		for(auto& elem: columns) {
 		std::fill(elem.begin(), elem.end(), 0);
 		}
 	};
@@ -43,8 +28,8 @@ void Grid::clear() {
 int Grid::get_active_points() {
 	int points = 0;
 	for (int species=0; species < m_species; species++){
-		for (int x=0; x < m_width; x++) {
-			for (int y=0; y < m_height; y++) {
+		for (int x=1; x < m_width-1; x++) {
+			for (int y=1; y < m_height-1; y++) {
 				if (this->check(x, y, species)) {
 					points++;
 				}
@@ -67,12 +52,12 @@ void Grid::populate() {
 	std::uniform_int_distribution<std::mt19937::result_type> distribution(1,100);
 	std::uniform_int_distribution<std::mt19937::result_type> color_distribution(1, m_species-1);
 
-	for (int x=0; x < m_width; x++) {
-		for (int y=0; y < m_height; y++) {
+	for (int x=1; x < m_width-1; x++) {
+		for (int y=1; y < m_height-1; y++) {
 			bool should_enable = distribution(rng) > threshold;
 			if (should_enable) {
 				int color = color_distribution(rng);
-				m_grid[color][x][y] = true;
+				set(x, y, color);
 			}
 		}
 	}

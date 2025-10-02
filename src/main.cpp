@@ -122,8 +122,8 @@ int main(int argc, char* argv[]) {
 		frames_passed++;
 		average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
 		int fps = average_frame_time < target_frame_time ? target_fps : (1.0 / average_frame_time);
-		std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
-		std::cout << std::flush;
+		//std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
+		//std::cout << std::flush;
 		double frame_time_remaining = target_frame_time - current_frame_time;
 		if (frame_time_remaining > 0) {
 			std::this_thread::sleep_for(std::chrono::duration<double>(frame_time_remaining));
