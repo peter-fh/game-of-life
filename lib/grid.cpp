@@ -30,11 +30,7 @@ bool Grid::set(int x, int y, int value) {
 }
 
 void Grid::clear() {
-	for (int x=0; x < m_width; x++) {
-		for (int y=0; y < m_height; y++) {
-			m_grid[x][y] = 0;
-		}
-	}
+	for(auto& elem : m_grid) std::fill(elem.begin(), elem.end(), 0);
 }
 
 int Grid::get_active_points() {

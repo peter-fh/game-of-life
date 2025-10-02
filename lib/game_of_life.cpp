@@ -1,8 +1,9 @@
 #include "game_of_life.h"
-#include "oneapi/tbb.h"
-#include <thread>
+#include "GLFW/glfw3.h"
+#include "oneapi/tbb/blocked_range2d.h"
+#include "oneapi/tbb/parallel_for.h"
 #include <vector>
-#include <iostream>
+#include <random>
 
 const std::vector<std::array<GLubyte, 4>> COLORS = {
 	{0, 0, 0, 255},
@@ -71,132 +72,83 @@ int nextValue(Grid* grid, int x, int y) {
 	}
 
 	int neighbors = 0;
+	for (const std::pair<int, int>& point : directions) {
+		int new_value = grid->check(x + point.first, y + point.second);
+		if (new_value) {
+			neighbors++;
+		}
+	}
+	if (neighbors < 3) {
+		return 0;
+	}
+
+	int total_waking_species = 0;
+
 	static thread_local int neighbor_values[23];
+	static thread_local int waking_species[3];
 	std::fill_n(neighbor_values, grid->m_species + 1, 0);
 
 	for (const std::pair<int, int>& point : directions) {
 		int new_value = grid->check(x + point.first, y + point.second);
 		if (new_value) {
 			neighbor_values[new_value]++;
-			neighbors++;
+			if (neighbor_values[new_value] == 3) {
+				waking_species[total_waking_species] = new_value;
+				total_waking_species++;
+			} else if (neighbor_values[new_value] == 4) {
+				total_waking_species--;
+			}
 		}
 	}
 
-	if (neighbors < 3) {
+	if (total_waking_species == 0) {
 		return 0;
 	}
 
-
-	for (int i=1; i < grid->m_species+1; i++) {
-		if (neighbor_values[i] == 3) {
-			return i;
-		}
-	}
-
-
-	return 0;
-
+	srand(static_cast<unsigned int>(time(0)));
+	static thread_local std::mt19937 rng(std::random_device{}());
+	std::uniform_int_distribution<int> dist(0, total_waking_species - 1);
+	return waking_species[dist(rng)];
 }
+
 using namespace oneapi;
-class Stepper {
-public:
-
-	Stepper(Grid* grid, Grid* next, tbb::concurrent_vector<Vertex>& vertices):
-		m_grid(grid),
-		m_next(next),
-		m_vertices(vertices)
-	{}
-
-	void operator()  (const tbb::blocked_range2d<int, int>& r) const {
-		Grid* grid = m_grid;
-		Grid* next = m_next;
-		float x_midpoint = (float)grid->m_width / 2.0;
-		float y_midpoint = (float)grid->m_height / 2.0;
-		for (int x = r.cols().begin(); x < r.cols().end(); x++) {
-			for (int y = r.rows().begin(); y < r.rows().end(); y++) {
-				int value = nextValue(grid, x, y);
-				if (value) {
-					Vertex vertex;
-					vertex.position[0] = float(x - x_midpoint) / x_midpoint;
-					vertex.position[1] = float(y - y_midpoint) / y_midpoint;
-
-					for (int i=0; i < 4; i++) {
-						vertex.color[i] = COLORS[value][i];
-					}
-					m_vertices.push_back(vertex);
-
-					grid->set(x, y, value);
-				}
-
-			}
-		}
-
-	}
-private:
-	Grid* m_grid;
-	Grid* m_next;
-	tbb::concurrent_vector<Vertex>& m_vertices;
-};
 
 void GameOfLife::step() {
-	std::thread threads[m_cores];
+	double step_start_time = glfwGetTime();
 	size_t estimated_capacity = m_vertices.size() * 1.1;
-	Stepper stepper(m_grid, m_next, estimated_capacity);
-	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_width, 0, m_grid->m_height), stepper);
-	std::cout << stepper.m_vertices.size() << " Vertices from stepper class\n";
-	m_vertices.assign(stepper.m_vertices.begin(), stepper.m_vertices.end());
-	std::cout << m_vertices.size() << " Vertices\n";
-	/*
 	m_vertices.clear();
 	m_vertices.reserve(estimated_capacity);
-	std::vector<std::vector<Vertex>> thread_vertices(m_cores);
+	double lambda_start_time = glfwGetTime();
+	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
+		   [this](const tbb::blocked_range2d<int, int>& r) {
+			Grid* grid = m_grid;
+			Grid* next = m_next;
+			float x_midpoint = (float)grid->m_width / 2.0;
+			float y_midpoint = (float)grid->m_height / 2.0;
+			for (int x = r.cols().begin(); x < r.cols().end(); x++) {
+				for (int y = r.rows().begin(); y < r.rows().end(); y++) {
+					int value = nextValue(grid, x, y);
+					if (value) {
+						Vertex vertex;
+						vertex.position[0] = float(x - x_midpoint) / x_midpoint;
+						vertex.position[1] = float(y - y_midpoint) / y_midpoint;
 
-	for (auto& vec : thread_vertices) {
-		vec.reserve(estimated_capacity / m_cores);
-	}
+						for (int i=0; i < 4; i++) {
+							vertex.color[i] = COLORS[value][i];
+						}
+						m_vertices.push_back(vertex);
 
-	for (int i=0; i < m_cores; i++) {
-		threads[i] = std::thread(&GameOfLife::thread_step, this, std::ref(thread_vertices[i]), i);
-	}
+						next->set(x, y, value);
+					}
 
-	for (int i=0; i < m_cores; i++) {
-		threads[i].join();
-		m_vertices.insert(m_vertices.end(), thread_vertices[i].begin(), thread_vertices[i].end());
-	}
-	*/
-
+				}
+			   }
+		}
+	);
 	swap();
 	render();
 }
 
-
-
-
-void GameOfLife::thread_step(std::vector<Vertex>& vertices, int thread) {
-	int width = m_grid->m_width / m_cores;
-	int begin = width * thread;
-	int end = width * (thread + 1);
-	float x_midpoint = (float)m_grid->m_width / 2.0;
-	float y_midpoint = (float)m_grid->m_height / 2.0;
-	for (int x = begin; x < end; x++) {
-		for (int y = 0; y < m_grid->m_height; y++) {
-			int value = nextValue(m_grid, x, y);
-			if (value) {
-				Vertex vertex;
-				vertex.position[0] = float(x - x_midpoint) / x_midpoint;
-				vertex.position[1] = float(y - y_midpoint) / y_midpoint;
-
-				for (int i=0; i < 4; i++) {
-					vertex.color[i] = COLORS[value][i];
-				}
-				vertices.push_back(vertex);
-
-				m_next->set(x, y, value);
-			}
-
-		}
-	}
-}
 
 void GameOfLife::swap() {
 	Grid* temp = m_grid;
@@ -206,8 +158,9 @@ void GameOfLife::swap() {
 }
 
 void GameOfLife::render() {
-	glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), &m_vertices[0], GL_DYNAMIC_DRAW);
-	glDrawArrays(GL_POINTS, 0, m_vertices.size());
+	m_rendered_vertices.assign(m_vertices.begin(), m_vertices.end());
+	//glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
+	glBufferData(GL_ARRAY_BUFFER, m_rendered_vertices.size() * sizeof(Vertex), m_rendered_vertices.data(), GL_DYNAMIC_DRAW);
+	glDrawArrays(GL_POINTS, 0, m_rendered_vertices.size());
 }
 
