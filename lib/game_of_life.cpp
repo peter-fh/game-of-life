@@ -2,8 +2,10 @@
 #include "GLFW/glfw3.h"
 #include "oneapi/tbb/blocked_range2d.h"
 #include "oneapi/tbb/parallel_for.h"
+#include <cstdint>
 #include <vector>
 #include <random>
+#include <iostream>
 
 const std::vector<std::array<GLubyte, 4>> COLORS = {
 	{0, 0, 0, 255},
@@ -54,7 +56,7 @@ constexpr std::array<std::pair<int, int>, 8> directions = {{
     { 1, -1}, { 1, 0}, { 1, 1}
 }};
 
-int nextValue(Grid* grid, int x, int y) {
+int _nextValue(Grid* grid, int x, int y) {
 	int value = grid->check(x, y);
 	if (value) {
 		int neighbors = 0;
@@ -105,10 +107,80 @@ int nextValue(Grid* grid, int x, int y) {
 		return 0;
 	}
 
-	srand(static_cast<unsigned int>(time(0)));
 	static thread_local std::mt19937 rng(std::random_device{}());
 	std::uniform_int_distribution<int> dist(0, total_waking_species - 1);
 	return waking_species[dist(rng)];
+}
+const uint64_t TWO_NEIGHBOR_MASK =	0x3333333333333333;
+const uint64_t THREE_NEIGHBOR_MASK =	0x7777777777777777; 
+const uint64_t SPECIES_VALUE_MASK =	0x1111111111111111;
+const uint64_t LAST_BIT_MASK =		0x8888888888888888;
+const uint64_t SINGLE_BIT_MASKS = {
+					
+};
+
+// 0x100203001000
+/*
+* 0001 0010 0011 0100 0101 0110 0111 1000 1001 
+* 0001 0010 0011 0100 0101 0110 0111 
+* a = (n & (n >> 1)) & SPECIES_VALUE_MASK
+* 0000 0000 0001 0000 0000 0000 0001
+* b = (n ^ (n >> 2)) & SPECIES_VALUE_MASK
+* 0001 0001 0001 0001 0000 0001 0000
+* c = a & b
+* 0000 0000 0001 0000 0000 0000 0000
+*/
+uint64_t nextValue(Grid* grid, int x, int y) {
+	int value = grid->check(x, y);
+	int neighbors = 0ULL;
+	for (const std::pair<int, int>& point : directions) {
+		neighbors += grid->check(x + point.first, y + point.second);
+	}
+	if (!neighbors) {
+		return 0ULL;
+	}
+	//std::cout << "Neighbors: " << neighbors << "\n";
+
+	if (value) {
+		uint64_t value_mask = value | value << 1 | value << 2 | value << 3;
+		if ((value ^ (TWO_NEIGHBOR_MASK & value_mask)) == 0 || (value ^ (THREE_NEIGHBOR_MASK & value_mask)) == 0){
+			return value;
+		}
+		return 0ULL;
+	}
+
+	if (neighbors & LAST_BIT_MASK) {
+		return 0ULL;
+	}
+	uint64_t a = (neighbors & (neighbors >> 1)) & SPECIES_VALUE_MASK;
+	uint64_t b = (neighbors ^ (neighbors >> 2)) & SPECIES_VALUE_MASK;
+	uint64_t n = a & b;
+	//std::cout << "n: " << n << "\n";
+
+	uint64_t leading = 1ULL << (63- __builtin_clzll(n));
+	uint64_t trailing = 1ULL << __builtin_ctzll(n);
+	if (leading == trailing) {
+		return leading;
+	}
+	static thread_local std::mt19937 rng(std::random_device{}());
+	uint64_t middle = n ^ (leading | trailing);
+	if (!middle) {
+		std::uniform_int_distribution<int> dist(0, 1);
+		if (dist(rng) == 0) {
+			return leading;
+		}
+		return trailing;
+	}
+	std::uniform_int_distribution<int> dist(0, 2);
+
+	int random_num = dist(rng);
+	if (random_num == 0) {
+		return leading;
+	} else if (random_num == 1) {
+		return trailing;
+	}
+	return middle;
+
 }
 
 using namespace oneapi;
@@ -133,8 +205,10 @@ void GameOfLife::step() {
 						vertex.position[0] = float(x - x_midpoint) / x_midpoint;
 						vertex.position[1] = float(y - y_midpoint) / y_midpoint;
 
+						int species_index = __builtin_ctzll(value) / 4 + 1;
+						//std::cout << "Value: " << value << ", Species index: " << species_index << "\n";
 						for (int i=0; i < 4; i++) {
-							vertex.color[i] = COLORS[value][i];
+							vertex.color[i] = COLORS[species_index][i];
 						}
 						m_vertices.push_back(vertex);
 

@@ -4,29 +4,21 @@
 #include <iostream>
 
 Grid::Grid(int width, int height, int species) {
-	m_grid = std::vector<std::vector<int>>(
-		width,
-		std::vector<int>(height)
+	m_grid = std::vector<std::vector<uint64_t>>(
+		width+2,
+		std::vector<uint64_t>(height+2)
 	);
 	m_width = width;
 	m_height = height;
 	m_species = species;
 }
 
-int Grid::check(int x, int y) {
-	if (x < 0 || x >= m_width || y < 0 || y >= m_height) {
-		return 0;
-	}
-
-	return m_grid[x][y];
+uint64_t Grid::check(int x, int y) {
+	return m_grid[x+1][y+1];
 }
 
-bool Grid::set(int x, int y, int value) {
-	if (x < 0 || x >= m_width || y < 0 || y >= m_height) {
-		return false;
-	}
-	m_grid[x][y] = value;
-	return true;
+void Grid::set(int x, int y, uint64_t value) {
+	m_grid[x+1][y+1] = value;
 }
 
 void Grid::clear() {
@@ -63,7 +55,8 @@ void Grid::populate() {
 			bool should_enable = distribution(rng) > threshold;
 			if (should_enable) {
 				int color = color_distribution(rng);
-				m_grid[x][y] = color;
+				uint64_t value = 1ULL << (color * 4);
+				set(x, y, value);
 			}
 		}
 	}
