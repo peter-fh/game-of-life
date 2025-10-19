@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
 	const int grid_height = height;
 	const int grid_width = width;
 	const int cores = 4;
-	const double target_fps = 60;
+	const double target_fps = 30;
 	const float point_size = float(width) / float(grid_width) * 2;
 
 	std::cout << "\n";
