@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 #include <random>
+#include "config.h"
 #include <iostream>
 
 const std::vector<std::array<GLubyte, 4>> COLORS = {
@@ -48,6 +49,8 @@ GameOfLife::GameOfLife(Grid* grid, int cores) {
 	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(Vertex, color));
 	glEnableVertexAttribArray(1);
 	m_cores = cores;
+	m_point_width_offset = 1.0 / float(grid->m_width);
+	m_point_height_offset = 1.0 / float(grid->m_height);
 }
 
 constexpr std::array<std::pair<int, int>, 8> directions = {{
@@ -111,13 +114,12 @@ int _nextValue(Grid* grid, int x, int y) {
 	std::uniform_int_distribution<int> dist(0, total_waking_species - 1);
 	return waking_species[dist(rng)];
 }
-const uint64_t TWO_NEIGHBOR_MASK =	0x3333333333333333;
-const uint64_t THREE_NEIGHBOR_MASK =	0x7777777777777777; 
+const uint64_t TWO_NEIGHBOR_MASK =	0x2222222222222222;
+const uint64_t THREE_NEIGHBOR_MASK =	0x3333333333333333; 
 const uint64_t SPECIES_VALUE_MASK =	0x1111111111111111;
 const uint64_t LAST_BIT_MASK =		0x8888888888888888;
-const uint64_t SINGLE_BIT_MASKS = {
-					
-};
+const uint64_t THIRD_BIT_MASK =		0x4444444444444444;
+const uint64_t SECOND_BIT_MASK =	0x2222222222222222;
 
 // 0x100203001000
 /*
@@ -129,33 +131,82 @@ const uint64_t SINGLE_BIT_MASKS = {
 * 0001 0001 0001 0001 0000 0001 0000
 * c = a & b
 * 0000 0000 0001 0000 0000 0000 0000
+*
+*n =	0001 0010 0011 0100 0101 0110 0111 
+*a =	n & SECOND_LAST_BIT_MASK
+*  =	0000 0000 0000 0100 0100 0100 0100
+*a =	a | a >> 1 | a >> 2
+*  =	0000 0000 0000 0111 0111 0111 0111
+*n &= ~a
+*n=	0001 0010 0011 0100 0101 0110 0111 &
+*	1111 1111 1111 1000 1000 1000 1000
+*n=	0001 0010 0011 0000 0000 0000 0000
+*n &= n >> 1
+n=	0001 0010 0011 0000 0000 0000 0000 &
+	0000 1001 0001 1000 0000 0000 0000
+=	0000 0000 0001 0000 0000 0000 0000
+
+	0001 0000 red 
+	0000 0001 green
+
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+
+	1000 0000
+
+	0x10 red
+	0x01 green
+
+	0x80
+
+
+* m = n & THIRD_BIT_MASK
+* m = m | m >> 1 | m >> 2
+* n = n & ~m
+* n = n & (n >> 1)
 */
 uint64_t nextValue(Grid* grid, int x, int y) {
-	int value = grid->check(x, y);
-	int neighbors = 0ULL;
+	uint64_t value = grid->check(x, y);
+	uint64_t neighbors = 0ULL;
 	for (const std::pair<int, int>& point : directions) {
 		neighbors += grid->check(x + point.first, y + point.second);
 	}
+
 	if (!neighbors) {
 		return 0ULL;
 	}
-	//std::cout << "Neighbors: " << neighbors << "\n";
 
+	// Live cell
 	if (value) {
 		uint64_t value_mask = value | value << 1 | value << 2 | value << 3;
-		if ((value ^ (TWO_NEIGHBOR_MASK & value_mask)) == 0 || (value ^ (THREE_NEIGHBOR_MASK & value_mask)) == 0){
+
+		neighbors &= value_mask;
+		bool two_neighbors = neighbors == (TWO_NEIGHBOR_MASK & value_mask);
+		bool three_neighbors = neighbors == (THREE_NEIGHBOR_MASK & value_mask);
+		if (two_neighbors || three_neighbors){
 			return value;
 		}
 		return 0ULL;
 	}
 
+	// Dead cell
 	if (neighbors & LAST_BIT_MASK) {
 		return 0ULL;
 	}
-	uint64_t a = (neighbors & (neighbors >> 1)) & SPECIES_VALUE_MASK;
-	uint64_t b = (neighbors ^ (neighbors >> 2)) & SPECIES_VALUE_MASK;
-	uint64_t n = a & b;
-	//std::cout << "n: " << n << "\n";
+
+	uint64_t m = neighbors & THIRD_BIT_MASK;
+	m = m | m >> 1 | m >> 2;
+	uint64_t n = neighbors & ~m;
+	n = n & (n >> 1);
+	if (!n) {
+		return 0ULL;
+	} 
 
 	uint64_t leading = 1ULL << (63- __builtin_clzll(n));
 	uint64_t trailing = 1ULL << __builtin_ctzll(n);
@@ -163,34 +214,50 @@ uint64_t nextValue(Grid* grid, int x, int y) {
 		return leading;
 	}
 	static thread_local std::mt19937 rng(std::random_device{}());
-	uint64_t middle = n ^ (leading | trailing);
-	if (!middle) {
-		std::uniform_int_distribution<int> dist(0, 1);
-		if (dist(rng) == 0) {
-			return leading;
-		}
-		return trailing;
-	}
-	std::uniform_int_distribution<int> dist(0, 2);
-
-	int random_num = dist(rng);
-	if (random_num == 0) {
+	std::uniform_int_distribution<int> dist(0, 1);
+	if (dist(rng) == 0) {
 		return leading;
-	} else if (random_num == 1) {
-		return trailing;
 	}
-	return middle;
+	return trailing;
 
 }
 
 using namespace oneapi;
 
 void GameOfLife::step() {
-	double step_start_time = glfwGetTime();
 	size_t estimated_capacity = m_vertices.size() * 1.1;
 	m_vertices.clear();
 	m_vertices.reserve(estimated_capacity);
-	double lambda_start_time = glfwGetTime();
+	/*
+	Grid* grid = m_grid;
+	Grid* next = m_next;
+	float x_midpoint = (float)grid->m_width / 2.0;
+	float y_midpoint = (float)grid->m_height / 2.0;
+	for (int x = 0; x < grid->m_width; x++) {
+		for (int y = 0; y < grid->m_height; y++) {
+			uint64_t value = grid->check(x, y);
+			if (value) {
+				Vertex vertex;
+				vertex.position[0] = float(x - x_midpoint) / x_midpoint + m_point_width_offset;
+				vertex.position[1] = float(y - y_midpoint) / y_midpoint + m_point_height_offset;
+
+				int species_index = __builtin_ctzll(value) / 4;
+				std::cout << "Value: " << value << ", Species index: " << species_index << "\n";
+				for (int i=0; i < 4; i++) {
+					vertex.color[i] = COLORS[species_index][i];
+				}
+				m_vertices.push_back(vertex);
+
+			}
+			int next_value = nextValue(grid, x, y);
+			if (next_value) {
+				//std::cout << "(" << x << ", " << y << "): " << next_value << "\n";
+				next->set(x, y, next_value);
+			}
+
+		}
+	}
+	*/
 	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
 		   [this](const tbb::blocked_range2d<int, int>& r) {
 			Grid* grid = m_grid;
@@ -199,20 +266,22 @@ void GameOfLife::step() {
 			float y_midpoint = (float)grid->m_height / 2.0;
 			for (int x = r.cols().begin(); x < r.cols().end(); x++) {
 				for (int y = r.rows().begin(); y < r.rows().end(); y++) {
-					int value = nextValue(grid, x, y);
+					uint64_t value = grid->check(x, y);
 					if (value) {
 						Vertex vertex;
-						vertex.position[0] = float(x - x_midpoint) / x_midpoint;
-						vertex.position[1] = float(y - y_midpoint) / y_midpoint;
+						vertex.position[0] = float(x - x_midpoint) / x_midpoint + m_point_width_offset;
+						vertex.position[1] = float(y - y_midpoint) / y_midpoint + m_point_height_offset;
 
-						int species_index = __builtin_ctzll(value) / 4 + 1;
-						//std::cout << "Value: " << value << ", Species index: " << species_index << "\n";
+						int species_index = __builtin_ctzll(value) / 4+1;
 						for (int i=0; i < 4; i++) {
 							vertex.color[i] = COLORS[species_index][i];
 						}
 						m_vertices.push_back(vertex);
 
-						next->set(x, y, value);
+					}
+					uint64_t next_value = nextValue(grid, x, y);
+					if (next_value) {
+						next->set(x, y, next_value);
 					}
 
 				}

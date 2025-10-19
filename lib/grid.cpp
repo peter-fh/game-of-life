@@ -1,6 +1,7 @@
 #include "grid.h"
 #include <vector>
 #include <random>
+#include "config.h"
 #include <iostream>
 
 Grid::Grid(int width, int height, int species) {
@@ -29,7 +30,8 @@ int Grid::get_active_points() {
 	int points = 0;
 	for (int x=0; x < m_width; x++) {
 		for (int y=0; y < m_height; y++) {
-			if (this->check(x, y)) {
+			uint64_t value = this->check(x,y);
+			if (value) {
 				points++;
 			}
 		}
@@ -46,7 +48,7 @@ void Grid::populate() {
 
 	// https://stackoverflow.com/questions/13445688/how-to-generate-a-random-number-in-c
 	std::random_device dev;
-	std::mt19937 rng(0);
+	std::mt19937 rng(dev());
 	std::uniform_int_distribution<std::mt19937::result_type> distribution(1,100);
 	std::uniform_int_distribution<std::mt19937::result_type> color_distribution(1, m_species);
 
@@ -55,13 +57,16 @@ void Grid::populate() {
 			bool should_enable = distribution(rng) > threshold;
 			if (should_enable) {
 				int color = color_distribution(rng);
-				uint64_t value = 1ULL << (color * 4);
+				uint64_t value = 1ULL << ((color-1) * 4);
+				if (value == 0) {
+					std::cout << "Failed to initiate\n";
+				}
 				set(x, y, value);
 			}
 		}
 	}
 	int total_points = get_active_points();
 	double points_percentage = double(total_points) / double(m_height * m_width) * 100;
-	std::cout << "Populated " << get_active_points() << " squares (" << std::round(points_percentage) << "%)\n";
+	std::cout << "Populated " << total_points << " squares (" << std::round(points_percentage) << "%)\n";
 }
 

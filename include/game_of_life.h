@@ -21,6 +21,8 @@ private:
     Grid* m_next;
     GLuint m_VBO;
     GLuint m_VAO;
+    float m_point_width_offset;
+    float m_point_height_offset;
     oneapi::tbb::concurrent_vector<Vertex> m_vertices;
     std::vector<Vertex> m_rendered_vertices;
 };
