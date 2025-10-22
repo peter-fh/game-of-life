@@ -7,6 +7,9 @@
 #include <random>
 #include "config.h"
 #include <iostream>
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
 
 const std::vector<std::array<GLubyte, 4>> COLORS = {
 	{0, 0, 0, 255},
@@ -171,6 +174,27 @@ n=	0001 0010 0011 0000 0000 0000 0000 &
 * n = n & ~m
 * n = n & (n >> 1)
 */
+
+inline int least_significant_index(uint64_t n) {
+#ifdef _MSC_VER
+	int index;
+	_BitScanForward64(&index, n);
+	return index;
+#else
+	return __builtin_ctzll(n);
+#endif
+}
+
+inline int most_significant_index(uint64_t n) {
+#ifdef _MSC_VER
+	int index;
+	_BitScanReverse64(&index, n);
+	return index;
+#else
+	return 63-__builtin_clzll(n);
+#endif
+}
+
 uint64_t nextValue(Grid* grid, int x, int y) {
 	uint64_t value = grid->check(x, y);
 	uint64_t neighbors = 0ULL;
@@ -208,8 +232,8 @@ uint64_t nextValue(Grid* grid, int x, int y) {
 		return 0ULL;
 	} 
 
-	uint64_t leading = 1ULL << (63- __builtin_clzll(n));
-	uint64_t trailing = 1ULL << __builtin_ctzll(n);
+	uint64_t leading = 1ULL << most_significant_index(n);
+	uint64_t trailing = 1ULL << least_significant_index(n);
 	if (leading == trailing) {
 		return leading;
 	}
@@ -228,36 +252,6 @@ void GameOfLife::step() {
 	size_t estimated_capacity = m_vertices.size() * 1.1;
 	m_vertices.clear();
 	m_vertices.reserve(estimated_capacity);
-	/*
-	Grid* grid = m_grid;
-	Grid* next = m_next;
-	float x_midpoint = (float)grid->m_width / 2.0;
-	float y_midpoint = (float)grid->m_height / 2.0;
-	for (int x = 0; x < grid->m_width; x++) {
-		for (int y = 0; y < grid->m_height; y++) {
-			uint64_t value = grid->check(x, y);
-			if (value) {
-				Vertex vertex;
-				vertex.position[0] = float(x - x_midpoint) / x_midpoint + m_point_width_offset;
-				vertex.position[1] = float(y - y_midpoint) / y_midpoint + m_point_height_offset;
-
-				int species_index = __builtin_ctzll(value) / 4;
-				std::cout << "Value: " << value << ", Species index: " << species_index << "\n";
-				for (int i=0; i < 4; i++) {
-					vertex.color[i] = COLORS[species_index][i];
-				}
-				m_vertices.push_back(vertex);
-
-			}
-			int next_value = nextValue(grid, x, y);
-			if (next_value) {
-				//std::cout << "(" << x << ", " << y << "): " << next_value << "\n";
-				next->set(x, y, next_value);
-			}
-
-		}
-	}
-	*/
 	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
 		   [this](const tbb::blocked_range2d<int, int>& r) {
 			Grid* grid = m_grid;
