@@ -38,7 +38,8 @@ const std::vector<std::array<GLubyte, 4>> COLORS = {
 
 GameOfLife::GameOfLife(Grid* grid, int cores) {
 	m_grid = grid;
-	m_next = new Grid(grid->m_width, grid->m_height, grid->m_species);
+	m_next = grid_init(grid->width, grid->height, grid->species);
+	clear(m_next);
 	glGenVertexArrays(1, &m_VAO);
 	glGenBuffers(1, &m_VBO);
 
@@ -52,8 +53,8 @@ GameOfLife::GameOfLife(Grid* grid, int cores) {
 	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(Vertex, color));
 	glEnableVertexAttribArray(1);
 	m_cores = cores;
-	m_point_width_offset = 1.0 / float(grid->m_width);
-	m_point_height_offset = 1.0 / float(grid->m_height);
+	m_point_width_offset = 1.0 / float(grid->width);
+	m_point_height_offset = 1.0 / float(grid->height);
 }
 
 constexpr std::array<std::pair<int, int>, 8> directions = {{
@@ -63,11 +64,11 @@ constexpr std::array<std::pair<int, int>, 8> directions = {{
 }};
 
 int _nextValue(Grid* grid, int x, int y) {
-	int value = grid->check(x, y);
+	int value = check(grid, x, y);
 	if (value) {
 		int neighbors = 0;
 		for (const std::pair<int, int>& point : directions) {
-			int new_value = grid->check(x + point.first, y + point.second);
+			int new_value = check(grid, x + point.first, y + point.second);
 			if (new_value && new_value == value) {
 				neighbors++;
 			}
@@ -81,7 +82,7 @@ int _nextValue(Grid* grid, int x, int y) {
 
 	int neighbors = 0;
 	for (const std::pair<int, int>& point : directions) {
-		int new_value = grid->check(x + point.first, y + point.second);
+		int new_value = check(grid, x + point.first, y + point.second);
 		if (new_value) {
 			neighbors++;
 		}
@@ -94,10 +95,10 @@ int _nextValue(Grid* grid, int x, int y) {
 
 	static thread_local int neighbor_values[23];
 	static thread_local int waking_species[3];
-	std::fill_n(neighbor_values, grid->m_species + 1, 0);
+	std::fill_n(neighbor_values, grid->species + 1, 0);
 
 	for (const std::pair<int, int>& point : directions) {
-		int new_value = grid->check(x + point.first, y + point.second);
+		int new_value = check(grid, x + point.first, y + point.second);
 		if (new_value) {
 			neighbor_values[new_value]++;
 			if (neighbor_values[new_value] == 3) {
@@ -196,10 +197,10 @@ inline int most_significant_index(uint64_t n) {
 }
 
 uint64_t nextValue(Grid* grid, int x, int y) {
-	uint64_t value = grid->check(x, y);
+	uint64_t value = check(grid, x, y);
 	uint64_t neighbors = 0ULL;
 	for (const std::pair<int, int>& point : directions) {
-		neighbors += grid->check(x + point.first, y + point.second);
+		neighbors += check(grid, x + point.first, y + point.second);
 	}
 
 	if (!neighbors) {
@@ -252,15 +253,15 @@ void GameOfLife::step() {
 	size_t estimated_capacity = m_vertices.size() * 1.1;
 	m_vertices.clear();
 	m_vertices.reserve(estimated_capacity);
-	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
+	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->height, 0, m_grid->width), 
 		   [this](const tbb::blocked_range2d<int, int>& r) {
 			Grid* grid = m_grid;
 			Grid* next = m_next;
-			float x_midpoint = (float)grid->m_width / 2.0;
-			float y_midpoint = (float)grid->m_height / 2.0;
+			float x_midpoint = (float)grid->width / 2.0;
+			float y_midpoint = (float)grid->height / 2.0;
 			for (int x = r.cols().begin(); x < r.cols().end(); x++) {
 				for (int y = r.rows().begin(); y < r.rows().end(); y++) {
-					uint64_t value = grid->check(x, y);
+					uint64_t value = check(grid, x, y);
 					if (value) {
 						Vertex vertex;
 						vertex.position[0] = float(x - x_midpoint) / x_midpoint + m_point_width_offset;
@@ -275,7 +276,7 @@ void GameOfLife::step() {
 					}
 					uint64_t next_value = nextValue(grid, x, y);
 					if (next_value) {
-						next->set(x, y, next_value);
+						set(next, x, y, next_value);
 					}
 
 				}
@@ -291,7 +292,7 @@ void GameOfLife::swap() {
 	Grid* temp = m_grid;
 	m_grid = m_next;
 	m_next = temp;
-	m_next->clear();
+	clear(m_next);
 }
 
 void GameOfLife::render() {

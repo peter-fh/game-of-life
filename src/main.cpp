@@ -89,8 +89,10 @@ int main(int argc, char* argv[]) {
 	int species = parse_species_arguments(argc, argv);
 	GLFWwindow* window = init_window(width, height, "Game of Life");
 	Shader shader("vertex.glsl", "fragment.glsl");
-	Grid* grid = new Grid(grid_width, grid_height, species);
-	grid->populate();
+	Grid* grid = grid_init(grid_width, grid_height, species);
+	int total_points = get_active_points(grid);
+	double points_percentage = double(total_points) / double(grid->height * grid->width) * 100;
+	std::cout << "Populated " << total_points << " squares (" << std::round(points_percentage) << "%)\n";
 	GameOfLife game(grid, cores);
 
 #ifdef __APPLE__
