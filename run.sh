@@ -1,12 +1,8 @@
 #!/bin/bash
 
-mkdir -p build
-cd build
-cmake ..
-if make; then
-	cd ..
-	./build/Game\ Of\ Life $@
-else
-	cd ..
+
+cmake --preset default
+if cmake --build ./build; then
+	./build/Game\ Of\ Life "$@"
 fi
 

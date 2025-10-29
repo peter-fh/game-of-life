@@ -13,19 +13,27 @@ set_target_properties(GameOfLife PROPERTIES OUTPUT_NAME "Game Of Life")
 
 include_directories(
 	./include
-	/opt/homebrew/Cellar/glew/2.2.0_1/include 
-	/opt/homebrew/Cellar/glfw/3.4/include
-	/opt/homebrew/Cellar/glm/1.0.1/include
-	/opt/homebrew/Cellar/assimp/6.0.2/include
 )
 
 find_package(TBB REQUIRED)
 
+find_package(OpenCLHeaders REQUIRED)
+find_package(OpenCLICDLoader REQUIRED)
+find_package(OpenCLHeadersCpp REQUIRED)
+find_package(OpenGL REQUIRED)
+find_package(GLEW REQUIRED)
+find_package(GLFW3 REQUIRED)
+find_package(GLM REQUIRED)
+find_package(assimp REQUIRED)
+
 target_link_libraries(GameOfLife
 	TBB::tbb
-	/opt/homebrew/Cellar/glfw/3.4/lib/libglfw.dylib 
-	/opt/homebrew/Cellar/glew/2.2.0_1/lib/libGLEW.dylib 
-	/opt/homebrew/Cellar/glm/1.0.1/lib/libglm.dylib
-	/opt/homebrew/Cellar/assimp/6.0.2/lib/libassimp.dylib
-	/System/Library/Frameworks/OpenGL.framework
+	OpenCL::Headers
+	OpenCL::OpenCL
+	OpenCL::HeadersCpp
+	OpenGL::GL
+        GLEW::GLEW
+        glfw
+        glm::glm
+        assimp::assimp
 )
