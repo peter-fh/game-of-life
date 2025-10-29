@@ -6,7 +6,8 @@
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "${sourceDir}/../cmake-prefix-path"
+        "CMAKE_PREFIX_PATH": "${sourceDir}/../cmake-prefix-path",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     }
   ]

@@ -3,6 +3,7 @@
 #include "shader.h"
 #include "game_of_life.h"
 #include "config.h"
+#include <CL/opencl.hpp>
 
 #define BACKGROUND_COLOR 0.0f, 0.0f, 0.0f, 0.0f
 

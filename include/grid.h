@@ -2,12 +2,12 @@
 #include "GL/glew.h"
 #include "GLFW/glfw3.h"
 
-struct Grid {
+typedef struct {
     int height;
     int width;
     int species;
     uint64_t* arr;
-};
+} Grid;
 
 void clear(Grid* grid);
 void set(Grid* grid, int x, int y, uint64_t value);
