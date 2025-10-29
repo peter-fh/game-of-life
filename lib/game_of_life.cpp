@@ -2,8 +2,14 @@
 #include "GLFW/glfw3.h"
 #include "oneapi/tbb/blocked_range2d.h"
 #include "oneapi/tbb/parallel_for.h"
+#include <cstdint>
 #include <vector>
 #include <random>
+#include "config.h"
+#include <iostream>
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
 
 const std::vector<std::array<GLubyte, 4>> COLORS = {
 	{0, 0, 0, 255},
@@ -46,6 +52,8 @@ GameOfLife::GameOfLife(Grid* grid, int cores) {
 	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(Vertex, color));
 	glEnableVertexAttribArray(1);
 	m_cores = cores;
+	m_point_width_offset = 1.0 / float(grid->m_width);
+	m_point_height_offset = 1.0 / float(grid->m_height);
 }
 
 constexpr std::array<std::pair<int, int>, 8> directions = {{
@@ -54,7 +62,7 @@ constexpr std::array<std::pair<int, int>, 8> directions = {{
     { 1, -1}, { 1, 0}, { 1, 1}
 }};
 
-int nextValue(Grid* grid, int x, int y) {
+int _nextValue(Grid* grid, int x, int y) {
 	int value = grid->check(x, y);
 	if (value) {
 		int neighbors = 0;
@@ -105,20 +113,145 @@ int nextValue(Grid* grid, int x, int y) {
 		return 0;
 	}
 
-	srand(static_cast<unsigned int>(time(0)));
 	static thread_local std::mt19937 rng(std::random_device{}());
 	std::uniform_int_distribution<int> dist(0, total_waking_species - 1);
 	return waking_species[dist(rng)];
+}
+const uint64_t TWO_NEIGHBOR_MASK =	0x2222222222222222;
+const uint64_t THREE_NEIGHBOR_MASK =	0x3333333333333333; 
+const uint64_t SPECIES_VALUE_MASK =	0x1111111111111111;
+const uint64_t LAST_BIT_MASK =		0x8888888888888888;
+const uint64_t THIRD_BIT_MASK =		0x4444444444444444;
+const uint64_t SECOND_BIT_MASK =	0x2222222222222222;
+
+// 0x100203001000
+/*
+* 0001 0010 0011 0100 0101 0110 0111 1000 1001 
+* 0001 0010 0011 0100 0101 0110 0111 
+* a = (n & (n >> 1)) & SPECIES_VALUE_MASK
+* 0000 0000 0001 0000 0000 0000 0001
+* b = (n ^ (n >> 2)) & SPECIES_VALUE_MASK
+* 0001 0001 0001 0001 0000 0001 0000
+* c = a & b
+* 0000 0000 0001 0000 0000 0000 0000
+*
+*n =	0001 0010 0011 0100 0101 0110 0111 
+*a =	n & SECOND_LAST_BIT_MASK
+*  =	0000 0000 0000 0100 0100 0100 0100
+*a =	a | a >> 1 | a >> 2
+*  =	0000 0000 0000 0111 0111 0111 0111
+*n &= ~a
+*n=	0001 0010 0011 0100 0101 0110 0111 &
+*	1111 1111 1111 1000 1000 1000 1000
+*n=	0001 0010 0011 0000 0000 0000 0000
+*n &= n >> 1
+n=	0001 0010 0011 0000 0000 0000 0000 &
+	0000 1001 0001 1000 0000 0000 0000
+=	0000 0000 0001 0000 0000 0000 0000
+
+	0001 0000 red 
+	0000 0001 green
+
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+	0001 0000
+
+	1000 0000
+
+	0x10 red
+	0x01 green
+
+	0x80
+
+
+* m = n & THIRD_BIT_MASK
+* m = m | m >> 1 | m >> 2
+* n = n & ~m
+* n = n & (n >> 1)
+*/
+
+inline int least_significant_index(uint64_t n) {
+#ifdef _MSC_VER
+	int index;
+	_BitScanForward64(&index, n);
+	return index;
+#else
+	return __builtin_ctzll(n);
+#endif
+}
+
+inline int most_significant_index(uint64_t n) {
+#ifdef _MSC_VER
+	int index;
+	_BitScanReverse64(&index, n);
+	return index;
+#else
+	return 63-__builtin_clzll(n);
+#endif
+}
+
+uint64_t nextValue(Grid* grid, int x, int y) {
+	uint64_t value = grid->check(x, y);
+	uint64_t neighbors = 0ULL;
+	for (const std::pair<int, int>& point : directions) {
+		neighbors += grid->check(x + point.first, y + point.second);
+	}
+
+	if (!neighbors) {
+		return 0ULL;
+	}
+
+	// Live cell
+	if (value) {
+		uint64_t value_mask = value | value << 1 | value << 2 | value << 3;
+
+		neighbors &= value_mask;
+		bool two_neighbors = neighbors == (TWO_NEIGHBOR_MASK & value_mask);
+		bool three_neighbors = neighbors == (THREE_NEIGHBOR_MASK & value_mask);
+		if (two_neighbors || three_neighbors){
+			return value;
+		}
+		return 0ULL;
+	}
+
+	// Dead cell
+	if (neighbors & LAST_BIT_MASK) {
+		return 0ULL;
+	}
+
+	uint64_t m = neighbors & THIRD_BIT_MASK;
+	m = m | m >> 1 | m >> 2;
+	uint64_t n = neighbors & ~m;
+	n = n & (n >> 1);
+	if (!n) {
+		return 0ULL;
+	} 
+
+	uint64_t leading = 1ULL << most_significant_index(n);
+	uint64_t trailing = 1ULL << least_significant_index(n);
+	if (leading == trailing) {
+		return leading;
+	}
+	static thread_local std::mt19937 rng(std::random_device{}());
+	std::uniform_int_distribution<int> dist(0, 1);
+	if (dist(rng) == 0) {
+		return leading;
+	}
+	return trailing;
+
 }
 
 using namespace oneapi;
 
 void GameOfLife::step() {
-	double step_start_time = glfwGetTime();
 	size_t estimated_capacity = m_vertices.size() * 1.1;
 	m_vertices.clear();
 	m_vertices.reserve(estimated_capacity);
-	double lambda_start_time = glfwGetTime();
 	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->m_height, 0, m_grid->m_width), 
 		   [this](const tbb::blocked_range2d<int, int>& r) {
 			Grid* grid = m_grid;
@@ -127,18 +260,22 @@ void GameOfLife::step() {
 			float y_midpoint = (float)grid->m_height / 2.0;
 			for (int x = r.cols().begin(); x < r.cols().end(); x++) {
 				for (int y = r.rows().begin(); y < r.rows().end(); y++) {
-					int value = nextValue(grid, x, y);
+					uint64_t value = grid->check(x, y);
 					if (value) {
 						Vertex vertex;
-						vertex.position[0] = float(x - x_midpoint) / x_midpoint;
-						vertex.position[1] = float(y - y_midpoint) / y_midpoint;
+						vertex.position[0] = float(x - x_midpoint) / x_midpoint + m_point_width_offset;
+						vertex.position[1] = float(y - y_midpoint) / y_midpoint + m_point_height_offset;
 
+						int species_index = __builtin_ctzll(value) / 4+1;
 						for (int i=0; i < 4; i++) {
-							vertex.color[i] = COLORS[value][i];
+							vertex.color[i] = COLORS[species_index][i];
 						}
 						m_vertices.push_back(vertex);
 
-						next->set(x, y, value);
+					}
+					uint64_t next_value = nextValue(grid, x, y);
+					if (next_value) {
+						next->set(x, y, next_value);
 					}
 
 				}

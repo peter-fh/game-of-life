@@ -1,14 +1,25 @@
 #include "window.h"
+#include "GLFW/glfw3.h"
 #include "shader.h"
 #include "game_of_life.h"
+#include "config.h"
 
 #define BACKGROUND_COLOR 0.0f, 0.0f, 0.0f, 0.0f
 
+const int MAX_SPECIES = 16;
+bool key_pressed = false;
 
-void processInput(GLFWwindow* window) {
-	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+	if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
+		key_pressed = true;
+	}
+	if ((key == GLFW_KEY_ESCAPE || key == GLFW_KEY_Q) && action == GLFW_PRESS) {
+		key_pressed = true;
 		glfwSetWindowShouldClose(window, true);
 	}
+
+
 }
 
 int parse_species_arguments(int argc, char* argv[]) {
@@ -20,9 +31,9 @@ int parse_species_arguments(int argc, char* argv[]) {
 			species = species_arg;
 		} else if (argc == 3) {
 			if (std::string(argv[2]) == "--force") {
-				if (species_arg > 22) {
-					std::cout << "Only 22 colors are supported, defaulting to 22\n";
-					species = 22;
+				if (species_arg > MAX_SPECIES) {
+					std::cout << "Only " << MAX_SPECIES << " colors are supported, defaulting to " << MAX_SPECIES << "\n";
+					species = MAX_SPECIES;
 				} else {
 					std::cout << "Starting game of life with " << species_arg << " species\n";
 					species = species_arg;
@@ -41,10 +52,13 @@ int parse_species_arguments(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]) {
 
-	const int height = 784;
-	const int width = 1024;
+	const int height = 784; // 784
+	const int width = 1024; // 1024
+	const int grid_height = height;
+	const int grid_width = width;
 	const int cores = 4;
 	const double target_fps = 30;
+	const float point_size = float(width) / float(grid_width) * 2;
 
 	std::cout << "\n";
 	std::cout << "|-------------------------------------|\n";
@@ -75,7 +89,7 @@ int main(int argc, char* argv[]) {
 	int species = parse_species_arguments(argc, argv);
 	GLFWwindow* window = init_window(width, height, "Game of Life");
 	Shader shader("vertex.glsl", "fragment.glsl");
-	Grid* grid = new Grid(width, height, species);
+	Grid* grid = new Grid(grid_width, grid_height, species);
 	grid->populate();
 	GameOfLife game(grid, cores);
 
@@ -88,8 +102,10 @@ int main(int argc, char* argv[]) {
 	glfwSwapInterval(1);
 
 	glDisable(GL_DEPTH_TEST);
-	glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
-	glPointSize(2.0f);
+	glPolygonMode(GL_FRONT_AND_BACK, GL_POINTS);
+	glPointSize(point_size);
+
+	glfwSetKeyCallback(window, keyCallback);
 
 	const double target_frame_time = 1.0 / target_fps;
 	double average_frame_time = 0;
@@ -100,7 +116,6 @@ int main(int argc, char* argv[]) {
 	while (!glfwWindowShouldClose(window)) {
 
 		double last_frame_time = glfwGetTime();
-		processInput(window);
 
 		glClearColor(BACKGROUND_COLOR);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -132,6 +147,12 @@ int main(int argc, char* argv[]) {
 		if (frames_passed == 450) {
 			std::cout << "Took " << std::round(total_frame_time * 1000) << "ms for the first 450 frames\n";
 		}
+#ifdef DEBUG_MODE
+		while (!key_pressed) {
+			glfwWaitEvents();
+		}
+		key_pressed = false;
+#endif
 	}
 
 	std::cout << "\n";
