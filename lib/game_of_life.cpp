@@ -393,41 +393,6 @@ void GameOfLife::step() {
 	clEnqueueNDRangeKernel(m_queue, m_kernel, 1, nullptr, &globalWorkSize, nullptr, 0, nullptr, nullptr);
 
 
-	clFinish(m_queue);
-	clEnqueueReadBuffer(m_queue, m_outBuffer, CL_TRUE, 0, gridBytes, m_next->arr, 0, nullptr, nullptr);
-	tbb::combinable<std::vector<Vertex>> local_vertices;
-
-	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->height, 0, m_grid->width), 
-		[this, &local_vertices](const tbb::blocked_range2d<int, int>& r) {
-			auto &verts = local_vertices.local();  // thread-local vector
-			Grid* grid = m_grid;
-			Grid* next = m_next;
-			float x_midpoint = (float)grid->width / 2.0;
-			float y_midpoint = (float)grid->height / 2.0;
-			for (int x = r.cols().begin(); x < r.cols().end(); x++) {
-				for (int y = r.rows().begin(); y < r.rows().end(); y++) {
-					uint64_t value = check(grid, x, y);
-					if (value) {
-						Vertex vertex;
-						vertex.position[0] = float(x - x_midpoint) / x_midpoint + m_point_width_offset;
-						vertex.position[1] = float(y - y_midpoint) / y_midpoint + m_point_height_offset;
-
-						int species_index = __builtin_ctzll(value) / 4+1;
-						for (int i=0; i < 4; i++) {
-							vertex.color[i] = COLORS[species_index][i];
-						}
-						verts.push_back(vertex);
-
-					}
-				}
-			}
-		}
-	   );
-	
-	local_vertices.combine_each([&](auto &vec) {
-		m_vertices.insert(m_vertices.end(), vec.begin(), vec.end());
-	});
-	/*
 	float x_midpoint = (float)m_grid->width / 2.0;
 
 	float y_midpoint = (float)m_grid->height / 2.0;
@@ -449,7 +414,9 @@ void GameOfLife::step() {
 
 		}
 	}
-	*/
+
+	clFinish(m_queue);
+	clEnqueueReadBuffer(m_queue, m_outBuffer, CL_TRUE, 0, gridBytes, m_next->arr, 0, nullptr, nullptr);
 
 	swap();
 	render();
