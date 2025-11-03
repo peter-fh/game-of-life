@@ -3,7 +3,6 @@
 #include "shader.h"
 #include "game_of_life.h"
 #include "config.h"
-#include <CL/opencl.hpp>
 
 #define BACKGROUND_COLOR 0.0f, 0.0f, 0.0f, 0.0f
 
@@ -52,13 +51,14 @@ int parse_species_arguments(int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]) {
+ 
 
 	const int height = 784; // 784
 	const int width = 1024; // 1024
 	const int grid_height = height;
 	const int grid_width = width;
 	const int cores = 4;
-	const double target_fps = 30;
+	const double target_fps = 60;
 	const float point_size = float(width) / float(grid_width) * 2;
 
 	std::cout << "\n";
@@ -94,7 +94,8 @@ int main(int argc, char* argv[]) {
 	int total_points = get_active_points(grid);
 	double points_percentage = double(total_points) / double(grid->height * grid->width) * 100;
 	std::cout << "Populated " << total_points << " squares (" << std::round(points_percentage) << "%)\n";
-	GameOfLife game(grid, cores);
+
+	GameOfLife game(grid);
 
 #ifdef __APPLE__
 	glViewport(0, 0, width * 2, height * 2);
@@ -161,5 +162,6 @@ int main(int argc, char* argv[]) {
 	std::cout << "\n";
 	glfwDestroyWindow(window);
 	glfwTerminate();
+
 	return 1;
 }

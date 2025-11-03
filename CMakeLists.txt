@@ -17,23 +17,18 @@ include_directories(
 
 find_package(TBB REQUIRED)
 
-find_package(OpenCLHeaders REQUIRED)
-find_package(OpenCLICDLoader REQUIRED)
-find_package(OpenCLHeadersCpp REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(GLFW3 REQUIRED)
-find_package(GLM REQUIRED)
-find_package(assimp REQUIRED)
+find_library(OpenCL_LIBRARY OpenCL)
+
 
 target_link_libraries(GameOfLife
-	TBB::tbb
-	OpenCL::Headers
-	OpenCL::OpenCL
-	OpenCL::HeadersCpp
-	OpenGL::GL
-        GLEW::GLEW
-        glfw
-        glm::glm
-        assimp::assimp
+	PRIVATE
+		TBB::tbb
+		OpenGL::GL
+		GLEW::GLEW
+		glfw
+		${OpenCL_LIBRARY}
 )
+

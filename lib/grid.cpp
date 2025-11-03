@@ -64,6 +64,10 @@ Grid* grid_init(int width, int height, int species) {
 	return grid;
 }
 
+size_t size(Grid* grid) {
+	return (grid->height + 2) * (grid->width + 2);
+}
+
 
 /*
 Grid::Grid(int width, int height, int species) {

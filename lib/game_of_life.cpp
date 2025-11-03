@@ -1,15 +1,18 @@
 #include "game_of_life.h"
-#include "GLFW/glfw3.h"
-#include "oneapi/tbb/blocked_range2d.h"
-#include "oneapi/tbb/parallel_for.h"
 #include <cstdint>
 #include <vector>
 #include <random>
+#include "oneapi/tbb/blocked_range2d.h"
+#include "oneapi/tbb/parallel_for.h"
+#include "oneapi/tbb/combinable.h"
 #include "config.h"
 #include <iostream>
 #ifdef _MSC_VER
 #include <intrin.h>
 #endif
+#define CL_TARGET_OPENCL_VERSION 120
+#define CL_HPP_TARGET_OPENCL_VERSION 120
+#include <OpenCL/opencl.h>
 
 const std::vector<std::array<GLubyte, 4>> COLORS = {
 	{0, 0, 0, 255},
@@ -36,10 +39,134 @@ const std::vector<std::array<GLubyte, 4>> COLORS = {
 	{255, 255, 255, 255},
 };
 
-GameOfLife::GameOfLife(Grid* grid, int cores) {
+GameOfLife::GameOfLife(
+        Grid* grid
+    )
+{
 	m_grid = grid;
 	m_next = grid_init(grid->width, grid->height, grid->species);
 	clear(m_next);
+
+	cl_int err;
+
+	cl_uint num_platforms = 0;
+	clGetPlatformIDs(0, nullptr, &num_platforms);
+	std::vector<cl_platform_id> platforms(num_platforms);
+	clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
+
+	m_platform = platforms[0];
+	cl_uint num_devices = 0;
+	clGetDeviceIDs(m_platform, CL_DEVICE_TYPE_ALL, 0, nullptr, &num_devices);
+	std::vector<cl_device_id> devices(num_devices);
+	clGetDeviceIDs(m_platform, CL_DEVICE_TYPE_ALL, num_devices, devices.data(), nullptr);
+	m_device = devices[0];
+
+	cl_context_properties props[] = {
+		CL_CONTEXT_PLATFORM, (cl_context_properties)m_platform,
+		0
+	};
+	m_ctx = clCreateContext(props, 1, &m_device, nullptr, nullptr, &err);
+
+
+	const char* kernelSrc = R"CLC(
+		__constant ulong TWO_NEIGHBOR_MASK   = 0x2222222222222222UL;
+		__constant ulong THREE_NEIGHBOR_MASK = 0x3333333333333333UL;
+		__constant ulong SPECIES_VALUE_MASK  = 0x1111111111111111UL;
+		__constant ulong LAST_BIT_MASK       = 0x8888888888888888UL;
+		__constant ulong THIRD_BIT_MASK      = 0x4444444444444444UL;
+		__constant ulong SECOND_BIT_MASK     = 0x2222222222222222UL;
+
+		kernel void gameOfLife(global const ulong* in, global ulong* out, int height, int width, int species) {
+			int i = get_global_id(0);
+			ulong value = in[i];
+			ulong neighbors = 0ul;
+			neighbors += in[i-width-1];
+			neighbors += in[i-width];
+			neighbors += in[i-width+1];
+			neighbors += in[i-1];
+			neighbors += in[i+1];
+			neighbors += in[i+width-1];
+			neighbors += in[i+width];
+			neighbors += in[i+width+1];
+			if (!neighbors) {
+				out[i] = 0ul;
+				return;
+			}
+
+			// Live cell
+			if (value) {
+				ulong value_mask = value | value << 1 | value << 2 | value << 3;
+				neighbors &= value_mask;
+				bool two_neighbors = neighbors == (TWO_NEIGHBOR_MASK & value_mask);
+				bool three_neighbors = neighbors == (THREE_NEIGHBOR_MASK & value_mask);
+				if (two_neighbors || three_neighbors){
+					out[i] = value;
+				} else {
+					out[i] = 0UL;
+				}
+				return;
+			}
+
+			// Dead cell
+			if (neighbors & LAST_BIT_MASK) {
+				out[i] = 0UL;
+				return;
+			}
+
+			ulong m = neighbors & THIRD_BIT_MASK;
+			m = m | m >> 1 | m >> 2;
+			ulong n = neighbors & ~m;
+			n = n & (n >> 1);
+			if (!n) {
+				out[i] = 0UL;
+				return;
+			} 
+
+			ulong leading = 1ULL << (63-clz(n));
+			ulong trailing = n & (~leading);
+			if (trailing == 0) {
+				out[i] = leading;
+				return;
+			}
+			ulong random_num = i & 1UL;
+			if (random_num == 1) {
+				out[i] = leading;
+			} else {
+				out[i] = trailing;
+			}
+		}
+	)CLC";
+
+	size_t srcLen = std::strlen(kernelSrc);
+	m_program = clCreateProgramWithSource(m_ctx, 1, &kernelSrc, &srcLen, &err);
+	err = clBuildProgram(m_program, 1, &m_device, "", nullptr, nullptr);
+	if (err != CL_SUCCESS) {
+		size_t logSize = 0;
+		clGetProgramBuildInfo(m_program, m_device, CL_PROGRAM_BUILD_LOG, 0, nullptr, &logSize);
+		std::vector<char> log(logSize);
+		clGetProgramBuildInfo(m_program, m_device, CL_PROGRAM_BUILD_LOG, logSize, log.data(), nullptr);
+		std::cerr << "Build Log:\n" << log.data() << "\n";
+		std::cerr << "Build failed, aborting\n";
+		clReleaseProgram(m_program);
+		clReleaseContext(m_ctx);
+		return;
+	}
+
+	// --- Command Queue ---
+	m_queue = clCreateCommandQueue(m_ctx, m_device, 0, &err);
+
+	// --- Buffers ---
+	size_t gridBytes = size(grid) * sizeof(uint64_t);
+	m_inBuffer = clCreateBuffer(m_ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+				gridBytes, m_grid->arr, &err);
+	m_outBuffer = clCreateBuffer(m_ctx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+				gridBytes, m_next->arr, &err);
+
+	cl_mem m_vertexBuffer = clCreateBuffer(m_ctx, CL_MEM_READ_WRITE, size(grid) * sizeof(Vertex), nullptr, &err);
+
+	// --- Kernel setup ---
+	m_kernel = clCreateKernel(m_program, "gameOfLife", &err);
+
 	glGenVertexArrays(1, &m_VAO);
 	glGenBuffers(1, &m_VBO);
 
@@ -52,9 +179,9 @@ GameOfLife::GameOfLife(Grid* grid, int cores) {
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(Vertex, color));
 	glEnableVertexAttribArray(1);
-	m_cores = cores;
 	m_point_width_offset = 1.0 / float(grid->width);
 	m_point_height_offset = 1.0 / float(grid->height);
+
 }
 
 constexpr std::array<std::pair<int, int>, 8> directions = {{
@@ -253,8 +380,26 @@ void GameOfLife::step() {
 	size_t estimated_capacity = m_vertices.size() * 1.1;
 	m_vertices.clear();
 	m_vertices.reserve(estimated_capacity);
+
+	size_t globalWorkSize = size(m_grid);
+	size_t gridBytes = size(m_grid) * sizeof(uint64_t);
+
+	clSetKernelArg(m_kernel, 0, sizeof(cl_mem), &m_inBuffer);
+	clSetKernelArg(m_kernel, 1, sizeof(cl_mem), &m_outBuffer);
+	clSetKernelArg(m_kernel, 2, sizeof(int), &m_grid->height);
+	clSetKernelArg(m_kernel, 3, sizeof(int), &m_grid->width);
+	clSetKernelArg(m_kernel, 4, sizeof(int), &m_grid->species);
+
+	clEnqueueNDRangeKernel(m_queue, m_kernel, 1, nullptr, &globalWorkSize, nullptr, 0, nullptr, nullptr);
+
+
+	clFinish(m_queue);
+	clEnqueueReadBuffer(m_queue, m_outBuffer, CL_TRUE, 0, gridBytes, m_next->arr, 0, nullptr, nullptr);
+	tbb::combinable<std::vector<Vertex>> local_vertices;
+
 	tbb::parallel_for(tbb::blocked_range2d<int, int>(0, m_grid->height, 0, m_grid->width), 
-		   [this](const tbb::blocked_range2d<int, int>& r) {
+		[this, &local_vertices](const tbb::blocked_range2d<int, int>& r) {
+			auto &verts = local_vertices.local();  // thread-local vector
 			Grid* grid = m_grid;
 			Grid* next = m_next;
 			float x_midpoint = (float)grid->width / 2.0;
@@ -271,34 +416,58 @@ void GameOfLife::step() {
 						for (int i=0; i < 4; i++) {
 							vertex.color[i] = COLORS[species_index][i];
 						}
-						m_vertices.push_back(vertex);
+						verts.push_back(vertex);
 
 					}
-					uint64_t next_value = nextValue(grid, x, y);
-					if (next_value) {
-						set(next, x, y, next_value);
-					}
-
 				}
-			   }
+			}
 		}
-	);
+	   );
+	
+	local_vertices.combine_each([&](auto &vec) {
+		m_vertices.insert(m_vertices.end(), vec.begin(), vec.end());
+	});
+	/*
+	float x_midpoint = (float)m_grid->width / 2.0;
+
+	float y_midpoint = (float)m_grid->height / 2.0;
+	for (int x = 0; x < m_grid->width; x++) {
+		for (int y = 0; y < m_grid->height; y++) {
+			uint64_t value = check(m_grid, x, y);
+			if (value) {
+				Vertex vertex;
+				vertex.position[0] = float(x - x_midpoint) / x_midpoint + m_point_width_offset;
+				vertex.position[1] = float(y - y_midpoint) / y_midpoint + m_point_height_offset;
+
+				int species_index = __builtin_ctzll(value) / 4+1;
+				for (int i=0; i < 4; i++) {
+					vertex.color[i] = COLORS[species_index][i];
+				}
+				m_vertices.push_back(vertex);
+
+			}
+
+		}
+	}
+	*/
+
 	swap();
 	render();
 }
 
 
 void GameOfLife::swap() {
-	Grid* temp = m_grid;
-	m_grid = m_next;
-	m_next = temp;
-	clear(m_next);
+	std::swap(m_grid, m_next);
+	std::swap(m_inBuffer, m_outBuffer);
 }
 
 void GameOfLife::render() {
+	/*
 	m_rendered_vertices.assign(m_vertices.begin(), m_vertices.end());
-	//glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
 	glBufferData(GL_ARRAY_BUFFER, m_rendered_vertices.size() * sizeof(Vertex), m_rendered_vertices.data(), GL_DYNAMIC_DRAW);
 	glDrawArrays(GL_POINTS, 0, m_rendered_vertices.size());
+	*/
+	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Vertex), m_vertices.data(), GL_DYNAMIC_DRAW);
+	glDrawArrays(GL_POINTS, 0, m_vertices.size());
 }
 
