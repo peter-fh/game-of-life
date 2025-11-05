@@ -57,8 +57,7 @@ int main(int argc, char* argv[]) {
 	const int width = 1024; // 1024
 	const int grid_height = height;
 	const int grid_width = width;
-	const int cores = 4;
-	const double target_fps = 60;
+	const double target_fps = 144;
 	const float point_size = float(width) / float(grid_width) * 2;
 
 	std::cout << "\n";
@@ -135,7 +134,8 @@ int main(int argc, char* argv[]) {
 		double current_frame_time = glfwGetTime() - last_frame_time;
 
 		if (average_frame_time == 0) {
-			average_frame_time = current_frame_time;
+			average_frame_time = 0.01;
+			std::cout << "First frame time: " << std::round(current_frame_time * 1000) << "ms\n";
 		}
 		total_frame_time += current_frame_time;
 		frames_passed++;
@@ -149,7 +149,13 @@ int main(int argc, char* argv[]) {
 		}
 
 		if (frames_passed == 450) {
-			std::cout << "Took " << std::round(total_frame_time * 1000) << "ms for the first 450 frames\n";
+			double fps_450 = 450 / total_frame_time;
+			std::cout << "Took " << std::round(total_frame_time * 1000) << "ms for the first 450 frames: ";
+			if (fps_450 > target_fps) {
+				std::cout << std::round(fps_450) << " fps, locked to " << target_fps << "\n";
+			} else {
+				std::cout << std::round(fps_450) << " fps\n";
+			}
 		}
 #ifdef DEBUG_MODE
 		while (!key_pressed) {

@@ -8,14 +8,33 @@ void clear(Grid* grid) {
 	memset(grid->arr, 0, (grid->height+2)*(grid->width+2)*sizeof(uint64_t));
 }
 void set(Grid* grid, int x, int y, uint64_t value) {
-	int i = (y+2) * grid->width + (x+2);
+	int i = (y+1) * (grid->width+2) + (x+1);
 	grid->arr[i] = value;
 }
 
+/*
+xxxx
+xxxx
+xxxx
+xxxx
+*/
+
+
 uint64_t check(Grid* grid, int x, int y) {
-	int i = (y+2) * grid->width + (x+2);
+	int i = (y+1) * (grid->width+2) + (x+1);
 	return grid->arr[i];
 }
+
+/* width = 3, height = 3
+ * xxxxx x = i % (width + 2) + 1
+ * xxxxx y = i  / (width + 2) - 1
+ * xxxxx
+ * xxxxx
+ * xxxxx
+	i = (y+2) * w + x + 2;
+	i-2 = (y+2) * w + x
+
+*/
 
 int get_active_points(Grid* grid){
 	int points = 0;

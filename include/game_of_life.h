@@ -21,6 +21,13 @@ public:
 private:
     void swap();
     void render();
+    void GPURender();
+    void CPURender();
+    void GPUStep();
+    void CPUStep();
+    void ParallelStep();
+    void SimpleRender();
+    void check_vertices();
     int m_cores;
     Grid* m_grid;
     Grid* m_next;
@@ -30,7 +37,9 @@ private:
     float m_point_height_offset;
 
     //oneapi::tbb::concurrent_vector<Vertex> m_vertices;
-    std::vector<Vertex> m_vertices;
+
+    //std::vector<Vertex> m_vertices;
+    Vertex* m_vertices;
     std::vector<Vertex> m_rendered_vertices;
 
     cl_platform_id m_platform;
@@ -38,7 +47,8 @@ private:
     cl_context m_ctx;
     cl_program m_program;
     cl_command_queue m_queue;
-    cl_kernel m_kernel;
+    cl_kernel m_gameKernel;
+    cl_kernel m_renderKernel;
 
     cl_mem m_inBuffer;
     cl_mem m_outBuffer;
