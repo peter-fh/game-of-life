@@ -71,6 +71,9 @@ GameOfLife::GameOfLife(
 	m_next = grid_init(grid->width, grid->height, grid->species);
 	clear(m_next);
 
+	m_rng = std::mt19937_64(std::random_device{}());
+	m_dist = std::uniform_int_distribution<uint64_t>(0ULL, ~(0ULL));
+
 	cl_int err;
 
 	cl_uint num_platforms = 0;
@@ -100,7 +103,16 @@ GameOfLife::GameOfLife(
 		__constant ulong THIRD_BIT_MASK      = 0x4444444444444444UL;
 		__constant ulong SECOND_BIT_MASK     = 0x2222222222222222UL;
 
-		kernel void gameOfLife(global const ulong* in, global ulong* out, int height, int width, int species) {
+		__constant ulong MAGIC		     = 0x2545F4914F6CDD1DUL;
+
+		// https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
+		uint pcg_hash(uint input) {
+			uint state = input * 747796405u + 2891336453u;
+			uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+			return (word >> 22u) ^ word;
+		}
+
+		kernel void gameOfLife(global ulong* in, global ulong* out, ulong seed, int height, int width, int species) {
 			int gid = get_global_id(0);
 			int x = gid % width;
 			int y = gid / width;
@@ -156,7 +168,9 @@ GameOfLife::GameOfLife(
 				out[i] = leading;
 				return;
 			}
-			ulong random_num = i & 1UL;
+			ulong rng_x = seed ^ gid;
+			ulong rng = pcg_hash(rng_x);
+			ulong random_num = rng & 1UL;
 			if (random_num == 1) {
 				out[i] = leading;
 			} else {
@@ -196,7 +210,7 @@ GameOfLife::GameOfLife(
 		};
 
 		kernel void render(
-			global const ulong* in, 
+			global ulong* in, 
 			global Vertex* out,
 			int height, 
 			int width, 
@@ -206,23 +220,26 @@ GameOfLife::GameOfLife(
 			float point_height_offset
 		) {
 			int gid = get_global_id(0);
-			int y = gid / width;
 			int x = gid % width;
-			int i = (y + 1) * (width+2) + (x + 1);
+			int y = gid / width;
+			int i = (y+1) * (width+2) + (x+1);
 			ulong value = in[i];
-			
-			Vertex vertex;
-			vertex.position.x = ((float)((x - x_midpoint)) / x_midpoint) + point_width_offset;
-			vertex.position.y = ((float)((y - y_midpoint)) / y_midpoint) + point_height_offset+0.5;
 
-			int species_index = 0;
-			if (value) {
-				species_index = (63-clz(value)) / 4+1;
-			}
+			Vertex vertex;
+			float vertex_x = (float)(x-x_midpoint) / x_midpoint;
+			float vertex_y = (float)(y-y_midpoint) / y_midpoint;
+
 			for (int c=0; c < 4; c++) {
-				vertex.color[c] = COLORS[species_index][c];
+				vertex.color[c] = COLORS[21][c];
 			}
+
 			out[gid] = vertex;
+
+
+			//int species_index = 0;
+			//if (value) {
+			//	species_index = (63-clz(value)) / 4+1;
+			//}
 		}
 	)CLC";
 
@@ -268,13 +285,12 @@ GameOfLife::GameOfLife(
 	glBufferData(GL_ARRAY_BUFFER, num_vertices * sizeof(Vertex), &m_vertices[0], GL_DYNAMIC_DRAW);
 
 	GLsizei stride = sizeof(Vertex);
-	std::cout << "Vertex stride: " << stride << "\n";
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (void*)0);
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (void*)offsetof(Vertex, color));
 	glEnableVertexAttribArray(1);
-	m_point_width_offset = 1.0 / float(grid->width);
-	m_point_height_offset = 1.0 / float(grid->height);
+	m_point_width_offset = 2.0 / float(grid->width);
+	m_point_height_offset = 2.0 / float(grid->height);
 
 }
 
@@ -530,6 +546,54 @@ void GameOfLife::CPUStep()
 		}
 	   );
 }
+
+#define CL_CHECK(err) if (err != CL_SUCCESS) { fprintf(stderr, "OpenCL error %d at %s:%d\n", err, __FILE__, __LINE__); exit(1); }
+void GameOfLife::GPUEverything()
+{
+	size_t globalWorkSize = m_grid->width * m_grid->height;
+	size_t gridBytes = size(m_grid) * sizeof(uint64_t);
+	size_t vertexBytes = m_grid->width * m_grid->height * sizeof(Vertex);
+
+	float x_midpoint = (float)(m_grid->width+1) / 2.0;
+	float y_midpoint = (float)(m_grid->height+1) / 2.0;
+
+	clEnqueueAcquireGLObjects(m_queue, 1, &m_vertexBuffer, 0, nullptr, nullptr);
+
+	cl_int err;
+	err = clSetKernelArg(m_renderKernel, 0, sizeof(cl_mem), &m_inBuffer); CL_CHECK(err);
+	err = clSetKernelArg(m_renderKernel, 1, sizeof(cl_mem), &m_vertexBuffer); CL_CHECK(err);
+	err = clSetKernelArg(m_renderKernel, 2, sizeof(int), &m_grid->height); CL_CHECK(err);
+	err = clSetKernelArg(m_renderKernel, 3, sizeof(int), &m_grid->width); CL_CHECK(err);
+	err = clSetKernelArg(m_renderKernel, 4, sizeof(float), &x_midpoint); CL_CHECK(err);
+	err = clSetKernelArg(m_renderKernel, 5, sizeof(float), &y_midpoint); CL_CHECK(err);
+	err = clSetKernelArg(m_renderKernel, 6, sizeof(float), &m_point_width_offset); CL_CHECK(err);
+	err = clSetKernelArg(m_renderKernel, 7, sizeof(float), &m_point_height_offset); CL_CHECK(err);
+
+	clEnqueueNDRangeKernel(m_queue, m_renderKernel, 1, nullptr, &globalWorkSize, nullptr, 0, nullptr, nullptr);
+
+	clEnqueueReleaseGLObjects(m_queue, 1, &m_vertexBuffer, 0, nullptr, nullptr);
+	clFinish(m_queue);
+	clEnqueueReadBuffer(m_queue, m_vertexBuffer, CL_TRUE, 0, vertexBytes, m_vertices, 0, nullptr, nullptr);
+	clFinish(m_queue);
+
+	glBufferData(GL_ARRAY_BUFFER, size(m_grid) * sizeof(Vertex), m_vertices, GL_DYNAMIC_DRAW);
+	glDrawArrays(GL_POINTS, 0, size(m_grid));
+
+
+	err = clSetKernelArg(m_gameKernel, 0, sizeof(cl_mem), &m_inBuffer); CL_CHECK(err);
+	err = clSetKernelArg(m_gameKernel, 1, sizeof(cl_mem), &m_outBuffer); CL_CHECK(err);
+	err = clSetKernelArg(m_gameKernel, 2, sizeof(int), &m_grid->height); CL_CHECK(err);
+	err = clSetKernelArg(m_gameKernel, 3, sizeof(int), &m_grid->width); CL_CHECK(err);
+	err = clSetKernelArg(m_gameKernel, 4, sizeof(int), &m_grid->species); CL_CHECK(err);
+
+	clEnqueueNDRangeKernel(m_queue, m_gameKernel, 1, nullptr, &globalWorkSize, nullptr, 0, nullptr, nullptr);
+
+
+	clFinish(m_queue);
+	clEnqueueReadBuffer(m_queue, m_outBuffer, CL_TRUE, 0, gridBytes, m_next->arr, 0, nullptr, nullptr);
+
+}
+
 void GameOfLife::CPURender()
 {
 	m_rendered_vertices.clear();
@@ -575,13 +639,14 @@ void GameOfLife::ParallelStep()
 {
 	size_t globalWorkSize = m_grid->width * m_grid->height;
 	size_t gridBytes = size(m_grid) * sizeof(uint64_t);
-
+	uint64_t seed = m_dist(m_rng);
 
 	clSetKernelArg(m_gameKernel, 0, sizeof(cl_mem), &m_inBuffer);
 	clSetKernelArg(m_gameKernel, 1, sizeof(cl_mem), &m_outBuffer);
-	clSetKernelArg(m_gameKernel, 2, sizeof(int), &m_grid->height);
-	clSetKernelArg(m_gameKernel, 3, sizeof(int), &m_grid->width);
-	clSetKernelArg(m_gameKernel, 4, sizeof(int), &m_grid->species);
+	clSetKernelArg(m_gameKernel, 2, sizeof(uint64_t), &seed);
+	clSetKernelArg(m_gameKernel, 3, sizeof(int), &m_grid->height);
+	clSetKernelArg(m_gameKernel, 4, sizeof(int), &m_grid->width);
+	clSetKernelArg(m_gameKernel, 5, sizeof(int), &m_grid->species);
 
 	clEnqueueNDRangeKernel(m_queue, m_gameKernel, 1, nullptr, &globalWorkSize, nullptr, 0, nullptr, nullptr);
 

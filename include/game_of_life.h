@@ -1,11 +1,14 @@
+#include <random>
 #include <vector>
 #include <oneapi/tbb/concurrent_vector.h>
 #include "GL/glew.h"
 #include "grid.h"
 
 #define CL_TARGET_OPENCL_VERSION 120
-#define CL_HPP_TARGET_OPENCL_VERSION 120
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnullability-completeness-on-arrays"
 #include <OpenCL/opencl.h>
+#pragma clang diagnostic pop
 
 struct Vertex {
     GLfloat position[2];
@@ -19,6 +22,7 @@ public:
     );
     void step();
 private:
+    void clSetup();
     void swap();
     void render();
     void GPURender();
@@ -27,6 +31,7 @@ private:
     void CPUStep();
     void ParallelStep();
     void SimpleRender();
+    void GPUEverything();
     void check_vertices();
     int m_cores;
     Grid* m_grid;
@@ -35,6 +40,10 @@ private:
     GLuint m_VAO;
     float m_point_width_offset;
     float m_point_height_offset;
+
+    std::mt19937_64 m_rng;
+    std::uniform_int_distribution<uint64_t> m_dist;
+
 
     //oneapi::tbb::concurrent_vector<Vertex> m_vertices;
 
