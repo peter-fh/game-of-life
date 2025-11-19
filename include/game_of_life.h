@@ -20,18 +20,12 @@ public:
     GameOfLife(
         Grid* grid
     );
-    void step();
+    cl_uint step();
 private:
-    void clSetup();
     void swap();
     void render();
-    void GPURender();
     void CPURender();
-    void GPUStep();
-    void CPUStep();
-    void ParallelStep();
-    void SimpleRender();
-    void GPUEverything();
+    cl_uint ParallelStep();
     void check_vertices();
     int m_cores;
     Grid* m_grid;
@@ -62,6 +56,7 @@ private:
     cl_mem m_inBuffer;
     cl_mem m_outBuffer;
     cl_mem m_vertexBuffer;
+    cl_mem m_countBuffer;
 
 
 

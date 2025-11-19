@@ -48,6 +48,8 @@ GLFWwindow* init_window(int height, int width, std::string title){
 	}
 	glfwMakeContextCurrent(window);
 
+	glfwSetWindowPos(window, 390, 75);
+
 	//Start up glew
 	glewInit();
 	return window;

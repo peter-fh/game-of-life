@@ -51,6 +51,8 @@ int parse_species_arguments(int argc, char* argv[]) {
 	return species;
 }
 
+// Unused
+// https://rosettacode.org/wiki/Pseudo-random_numbers/Xorshift_star
 const uint64_t MAGIC = 0x2545F4914F6CDD1DULL;
 uint64_t xorshift64star(uint64_t x) {
     /* initial seed must be nonzero, don't use a static variable for the state if multithreaded */
@@ -60,6 +62,8 @@ uint64_t xorshift64star(uint64_t x) {
     return x * MAGIC;
 }
 
+// Function actually used by GPU
+// https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
 uint pcg_hash(uint input)
 {
     uint state = input * 747796405u + 2891336453u;
@@ -67,17 +71,24 @@ uint pcg_hash(uint input)
     return (word >> 22u) ^ word;
 }
 
-void display_randomness(int height, int width) {
+void display_randomness(int n) {
 	std::mt19937_64 rng(std::random_device{}());
 	std::uniform_int_distribution<uint64_t> dist(0ULL, ~(0ULL));
 	uint64_t seed = dist(rng);
+	std::cout << "Noise created by PCG Hash over " << n << " consecutive inputs:\n";
 
-	for (int i=0; i < height * width; i++) {
+	for (int i=0; i < n; i++) {
 		uint64_t x = i ^ seed;
 		int rng = pcg_hash(x) & 1;
-		std::cout << i << ", " << rng << "\n";
+		if (rng == 0) {
+			std::cout << " ";
+		} else {
+			std::cout << "█";
+		}
+		//std::cout << rng;
+		//std::cout << i << ", " << rng << "\n";
 	}
-	exit(0);
+	std::cout << "\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -85,13 +96,15 @@ int main(int argc, char* argv[]) {
 
 	const int height = 784; // 784
 	const int width = 1024; // 1024
-	//const int grid_height = 49;
-	//const int grid_width = 64;
+#ifdef DEBUG_MODE
+	const int grid_height = 49;
+	const int grid_width = 64;
+#else
 	const int grid_height = height;
 	const int grid_width = width;
-	const double target_fps = 60;
+#endif
+	const double target_fps = 120;
 	const float point_size = float(width) / float(grid_width) * 2;
-	//display_randomness(height, width);
 
 
 	std::cout << "\n";
@@ -114,8 +127,13 @@ int main(int argc, char* argv[]) {
 	std::cout << "| ██║     ██║██╔════╝██╔════╝         |\n";
 	std::cout << "| ██║     ██║█████╗  █████╗           |\n";
 	std::cout << "| ██║     ██║██╔══╝  ██╔══╝           |\n";
+#ifndef DEBUG_MODE
 	std::cout << "| ███████╗██║██║     ███████╗         |\n";
 	std::cout << "| ╚══════╝╚═╝╚═╝     ╚══════╝         |\n";
+#else
+	std::cout << "| ███████╗██║██║     ███████╗  debug  |\n";
+	std::cout << "| ╚══════╝╚═╝╚═╝     ╚══════╝   mode  |\n";
+#endif
 	std::cout << "|-------------------------------------|\n";
 	std::cout << "\n";
 
@@ -146,9 +164,10 @@ int main(int argc, char* argv[]) {
 
 	const double target_frame_time = 1.0 / target_fps;
 	double average_frame_time = 0;
-	const double alpha = 0.9;
+	const double alpha = 0.99;
 	int frames_passed = 0;
 	double total_frame_time = 0;
+	int cell_count = 0;
 
 	while (!glfwWindowShouldClose(window)) {
 
@@ -159,7 +178,7 @@ int main(int argc, char* argv[]) {
 
 		shader.use();
 
-		game.step();
+		cell_count = game.step() / 1000;
 
 
 		glfwSwapBuffers(window);
@@ -174,8 +193,10 @@ int main(int argc, char* argv[]) {
 			total_frame_time += current_frame_time;
 			average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
 			int fps = average_frame_time < target_frame_time ? target_fps : (1.0 / average_frame_time);
-			std::cout << " Frame time: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
+
+			std::cout << " Cells: " << cell_count << "k, FT: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
 			std::cout << std::flush;
+
 		}
 		double frame_time_remaining = target_frame_time - current_frame_time;
 		if (frame_time_remaining > 0) {
@@ -185,11 +206,15 @@ int main(int argc, char* argv[]) {
 
 		if (frames_passed == 460) {
 			double fps_450 = 450 / total_frame_time;
-			std::cout << "Took " << std::round(total_frame_time * 1000) << "ms for the first 450 frames: ";
+			double average_frame_time_450 = total_frame_time / 450.0;
+			std::cout << std::flush;
+			std::cout << "First 450 frame statistics:   \n";
+			std::cout << "\t" << std::round(total_frame_time * 1000) << "ms total\n";
+			std::cout << "\t" << std::round(average_frame_time_450 * 10000) / 10 << "ms average frame time\n";
 			if (fps_450 > target_fps) {
-				std::cout << std::round(fps_450) << " fps, locked to " << target_fps << "\n";
+				std::cout << "\t" << std::round(fps_450) << " average fps (locked at " << target_fps << ")\n";
 			} else {
-				std::cout << std::round(fps_450) << " fps\n";
+				std::cout <<  "\t" <<std::round(fps_450) << " average fps\n";
 			}
 		}
 #ifdef DEBUG_MODE
