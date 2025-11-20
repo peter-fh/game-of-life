@@ -11,6 +11,11 @@ file(GLOB LIB_SOURCES "lib/*.cpp")
 add_executable(GameOfLife src/main.cpp ${LIB_SOURCES})
 set_target_properties(GameOfLife PROPERTIES OUTPUT_NAME "Game Of Life")
 
+if(DEBUG_MODE)
+	message("Debug mode")
+	target_compile_definitions(GameOfLife PRIVATE DEBUG_MODE)
+endif()
+
 include_directories(
 	./include
 )

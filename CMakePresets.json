@@ -2,10 +2,21 @@
   "version": 3,
   "configurePresets": [
     {
-      "name": "base",
+      "name": "default",
       "generator": "Unix Makefiles",
-      "binaryDir": "${sourceDir}/build",
+      "binaryDir": "${sourceDir}/build/default",
       "cacheVariables": {
+        "DEBUG_MODE": "OFF",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/../cmake-prefix-path",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "debug",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "DEBUG_MODE": "ON",
         "CMAKE_PREFIX_PATH": "${sourceDir}/../cmake-prefix-path",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
