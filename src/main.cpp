@@ -51,17 +51,6 @@ int parse_species_arguments(int argc, char* argv[]) {
 	return species;
 }
 
-// Unused
-// https://rosettacode.org/wiki/Pseudo-random_numbers/Xorshift_star
-const uint64_t MAGIC = 0x2545F4914F6CDD1DULL;
-uint64_t xorshift64star(uint64_t x) {
-    /* initial seed must be nonzero, don't use a static variable for the state if multithreaded */
-    x ^= x >> 12;
-    x ^= x << 25;
-    x ^= x >> 27;
-    return x * MAGIC;
-}
-
 // Function actually used by GPU
 // https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/
 uint pcg_hash(uint input)
@@ -92,6 +81,10 @@ void display_randomness(int n) {
 }
 
 int main(int argc, char* argv[]) {
+	/*
+	display_randomness(10000);
+	exit(0);
+	*/
  
 
 	const int height = 784; // 784
@@ -178,8 +171,11 @@ int main(int argc, char* argv[]) {
 
 		shader.use();
 
-		cell_count = game.step() / 1000;
+		cell_count = game.step();
 
+#ifndef DEBUG_MODE
+		cell_count /= 1000;
+#endif
 
 		glfwSwapBuffers(window);
 
@@ -194,7 +190,11 @@ int main(int argc, char* argv[]) {
 			average_frame_time = alpha * average_frame_time + (1 - alpha) * current_frame_time;
 			int fps = average_frame_time < target_frame_time ? target_fps : (1.0 / average_frame_time);
 
+#ifdef DEBUG_MODE
+			std::cout << " Cells: " << cell_count << ", FT: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
+#else
 			std::cout << " Cells: " << cell_count << "k, FT: " << std::round(average_frame_time * 1000) << "ms " << "(" << fps << "fps) \r";
+#endif
 			std::cout << std::flush;
 
 		}
